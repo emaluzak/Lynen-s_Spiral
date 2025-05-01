@@ -1,0 +1,558 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from rdkit import Chem
+from rdkit.Chem import AllChem, Draw
+from rdkit.Chem.Draw import IPythonConsole
+from enum import Enum
+from itertools import zip_longest
+
+# Import Ema's code (saved in a file called fatty_acid.py)
+import sys
+sys.path.append(r'C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral')
+from fatty_acid import FattyAcidMetabolism, FattyAcidType # type: ignore
+
+# Common fatty acid names to SMILES dictionary
+FATTY_ACIDS = {
+    "palmitic acid": "CCCCCCCCCCCCCCCC(=O)O",    # C16:0
+    "stearic acid": "CCCCCCCCCCCCCCCCCC(=O)O",   # C18:0
+    "oleic acid": "CCCCCCCCC=CCCCCCCC(=O)O",     # C18:1(9)
+    "linoleic acid": "CCCCCC=CCC=CCCCCCC(=O)O",  # C18:2(9,12)
+    "alpha-linolenic acid": "CCC=CCC=CCC=CCCCCCC(=O)O",  # C18:3(9,12,15)
+    "arachidonic acid": "CCCC=CCC=CCC=CCC=CCCCC(=O)O"    # C20:4(5,8,11,14)
+}
+
+# SMARTS patterns for each reaction step
+
+SMARTS_REACTIONS = {
+    # 1. Dehydrogenation: Remove two hydrogens to form a double bond between alpha and beta carbon
+    "dehydrogenation": "[C:1]-[CH2:2]-C(=O)-S >> [C:1]=[C:2]-C(=O)-S",
+
+    # 2. Hydration: Add OH to beta-carbon, H to alpha-carbon
+    "hydration": "[C:1](=O)[C:2]=[C:3] >> [C:1](=O)[C:2]([OH])[C:3]",
+
+    # 3. Oxidation: Oxidize beta-carbon alcohol (OH) to ketone (=O)
+    "oxidation": "[C:1]-[C:2]([OH:3])-[C:4](=O)S >> [C:1](=O)-[C:2]-[C:4](=O)S",
+
+    # 4. Thiolysis: Cleave between alpha and beta carbon; attach CoA-S group
+    # Note: Representing CoA simply as 'S' attached to C
+    "thiolysis": "[C:1](=[O:2])[C:3][C:4](=[O:5])S >> [C:1](=[O:2])S.[C:3][C:4](=[O:5])S"
+    
+}
+
+
+# EnhancedFattyAcidMetabolism inherits all the attributes and methods of the FattyAcidMetabolism class, 
+# while also having the ability to introduce its own unique attributes and methods or override existing ones.
+
+class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
+    """Enhanced version of FattyAcidMetabolism with reaction SMARTS implementation."""
+    
+    def __init__(self, input_value):
+        """
+        Initialize with SMILES, fatty acid name, or notation like C18:2(9,12).
+        """
+        smiles = self._process_input(input_value)
+        print(f"Processed SMILES: {smiles}")  # Debugging output
+        super().__init__(smiles)
+
+        self.reaction_steps = []
+        self.reaction_results = []
+        self.reaction_descriptions = []
+        self.reaction_cycles = []
+        self.atp_yield = 0
+
+    def _process_input(self, input_value):
+        """Process input into a valid SMILES string."""
+        try:
+            # If input is a valid SMILES string
+            mol = Chem.MolFromSmiles(input_value)
+            if mol is not None:
+                return input_value
+        
+            # If input matches a common fatty acid name (case-insensitive)
+            input_value_lower = input_value.lower()
+            if input_value_lower in FATTY_ACIDS:
+                return FATTY_ACIDS[input_value_lower]
+
+            # If input is in CX:Y(pos1,pos2,...) notation
+            if input_value.startswith("C") and ":" in input_value:
+                return self._notation_to_smiles(input_value)
+
+        except Exception as e:
+            raise ValueError(f"Error processing input '{input_value}': {str(e)}")
+
+        # Input is unrecognized
+        raise ValueError(
+            f"Unrecognized input format: {input_value}. Use SMILES, common name, or CX:Y notation."
+        )
+
+
+    def parse_fatty_acid_notation(self, notation):
+        """
+        Parse and validate fatty acid notation like 'C18:2(9,12)'.
+        Returns the number of carbons and a list of double bond positions.
+
+        :param notation: String, fatty acid notation
+        :return: (num_carbons, bond_positions)
+        """
+        try:
+            # Split into parts
+            parts = notation.split(':')
+            num_carbons = int(parts[0][1:])  # Extract the number of carbons (e.g., "C18" -> 18)
+
+            # Handle saturated fatty acids (no double bonds)
+            if len(parts) == 1 or '(' not in parts[1]:
+                return num_carbons, 0, []
+
+            # Unsaturated: Extract double bond info
+            double_bond_info = parts[1]
+            double_bond_count = int(double_bond_info.split('(')[0])  # Number of double bonds
+            bond_positions = [int(pos) for pos in double_bond_info.split('(')[1][:-1].split(',')]
+
+            # Validate positions
+            if double_bond_count != len(bond_positions):
+                raise ValueError("Mismatch between bond count and positions.")
+            if any(pos < 1 or pos >= num_carbons for pos in bond_positions):
+                raise ValueError("Invalid bond position detected.")
+
+            return num_carbons, double_bond_count, bond_positions
+
+        except Exception as e:
+            raise ValueError(f"Invalid fatty acid notation '{notation}': {str(e)}")
+    
+
+    def construct_backbone(self, num_carbons, double_bond_count, bond_positions):
+        """
+        Construct the carbon backbone of the fatty acid with double bonds.
+
+        :param num_carbons: Number of carbons in the chain
+        :param bond_positions: List of positions for double bonds
+        :return: String representing the backbone SMILES (no carboxyl group yet)
+        """
+
+        bond_positions_2 = [x - double_bond_count for x in bond_positions]
+        backbone = []
+        for i in range(1, num_carbons + 1 - double_bond_count):
+            if i in bond_positions_2:
+                backbone.append("C=")
+            else: 
+                backbone.append("C")  # Append a single-bonded carbon
+
+        return ''.join(backbone)
+
+
+    def add_carboxyl_group(self, backbone):
+        """
+        Add the carboxyl group to the backbone.
+
+        :param backbone: String, the carbon backbone
+        :return: Complete SMILES string with carboxyl group
+        """
+        reversed_backbone = backbone[::-1]
+        return reversed_backbone + "(=O)O"
+
+    def _notation_to_smiles(self, notation):
+        """
+        Convert CX:Y(pos1,pos2,...) notation to SMILES.
+
+        :param notation: String, fatty acid notation
+        :return: SMILES string for the fatty acid molecule
+        """
+        try:
+            # Parse input
+            num_carbons, double_bond_count, bond_positions = self.parse_fatty_acid_notation(notation)
+
+            # Construct backbone
+            backbone = self.construct_backbone(num_carbons, double_bond_count, bond_positions)
+
+            # Add carboxyl group
+            return self.add_carboxyl_group(backbone)
+
+        except Exception as e:
+            raise ValueError(f"Error converting notation '{notation}': {str(e)}")
+
+
+    # Reaction SMARTS implementation for activation (acyl-CoA synthetase) TO MODIFY !!!
+    def activate_fatty_acid(self):
+        """
+        Activate fatty acid by converting to acyl-CoA.
+        This process consumes 2 ATP equivalent.
+        """
+
+        try:
+            # Simplified SMARTS pattern to fix activation reaction
+           
+            # Replace this line:
+            # activation_rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[O:3][H] >> [C:1](=[O:2])[S:4][CoA]")
+
+            # With a simpler version:
+            activation_rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[O:3] >> [C:1](=[O:2])[S:3]C")
+
+
+            if not activation_rxn:
+                raise ValueError("Invalid activation reaction SMARTS pattern")
+        
+            # Prepare reactant
+            reactant = self.molecule
+
+            # Debugging: Print reactant molecule to check its structure
+            print("Reactant Molecule:", Chem.MolToSmiles(reactant, canonical=True))
+        
+            # Run reaction
+            products = activation_rxn.RunReactants((reactant,))
+        
+            if not products or len(products) == 0:
+                raise RuntimeError("Activation reaction failed to produce any products")
+        
+            # Get the product molecule
+            activated_mol = products[0][0]
+
+            # Debugging: Print product molecule to check if it's formed
+            print("Activated Molecule:", Chem.MolToSmiles(activated_mol, canonical=True))
+
+            # Fix before adding hydrogens
+            activated_mol.UpdatePropertyCache(strict=False)
+            Chem.SanitizeMol(activated_mol)
+        
+            # Add hydrogens for better visualization
+            #activated_mol = Chem.AddHs(activated_mol)
+        
+            # Store reaction information
+            self.reaction_steps.append("Activation")
+            self.reaction_results.append(activated_mol)
+            self.reaction_descriptions.append("Conversion to acyl-CoA via acyl-CoA synthetase (2 ATP cost)")
+            print(f"Activation step: {self.reaction_steps}")
+        
+            return activated_mol
+        
+        except Exception as e:
+            # Provide detailed error information
+            raise RuntimeError(f"Failed ot activate fatty acid. Error: {str(e)}\n"
+                               f"Input Molecule: {Chem.MolToSmiles(self.molecule, canonical=True)}")
+    
+    # Implement carnitine shuttle
+    def carnitine_shuttle(self, acyl_coa_mol):
+        """
+        Simulate transport of acyl-CoA into mitochondria via carnitine shuttle.
+        This is a multi-step process:
+        1. Acyl-CoA + Carnitine → Acylcarnitine + CoA (via CPT1)
+        2. Transport across membrane
+        3. Acylcarnitine + CoA → Acyl-CoA + Carnitine (via CPT2)
+        """
+        # For simplicity, we'll simulate this without actual reaction SMARTS
+        # In a real implementation, you'd model each step
+        
+        # Store reaction information
+        self.reaction_steps.append("Transport")
+        self.reaction_results.append(acyl_coa_mol)  # No molecular change, just location
+        self.reaction_descriptions.append("Transport into mitochondria via carnitine shuttle")
+        print(f"After transportation step: {self.reaction_steps}")
+        
+        return acyl_coa_mol
+    
+    def run_reaction(self, reaction_smarts, molecule):
+        """Run a SMARTS-based reaction."""
+        try:
+            # Compile the reaction from SMARTS
+            reaction = AllChem.ReactionFromSmarts(reaction_smarts)
+            if not reaction:
+                raise ValueError(f"Invalid SMARTS reaction pattern: {reaction_smarts}")
+            
+            # Run the reaction
+            products = reaction.RunReactants((molecule,))
+
+            if not products or len(products) == 0:
+                print(f"Warning: Reaction produced no products. Reaction SMARTS: {reaction_smarts}")
+                return None  # Or handle appropriately
+
+            if len(products) > 0 and len(products[0]) > 0:
+                # Check if the reaction produced more than one product
+                if len(products) > 1:
+                    product_1 = products[0][0]  # First product (acetyl-CoA)
+                    product_2 = products[0][1]  # Second product (shortened-CoA)
+                    print(f"Product 1 (Acetyl-CoA): {Chem.MolToSmiles(product_1)}")
+                    print(f"Product 2 (Shortened-CoA): {Chem.MolToSmiles(product_2)}")
+
+                    try:
+                        Chem.SanitizeMol(product_1)
+                        molecule.UpdatePropertyCache(strict=False) # Sanitize before the reaction
+                
+                    except Exception as e:
+                        print(f"Error sanitizing molecule before reaction: {e}")
+                        return None  # Or handle appropriately
+            
+                    return product_1
+                
+                else:
+                    molecule = products[0][0] # Access the first molecule of the first product set
+                    
+                try:
+                    Chem.SanitizeMol(molecule)
+                    molecule.UpdatePropertyCache(strict=False) # Sanitize before the reaction
+                
+                except Exception as e:
+                    print(f"Error sanitizing molecule before reaction: {e}")
+                    return None  # Or handle appropriately
+                    
+                return molecule
+            
+            else:
+                print(f"No products generated. Reaction SMARTS: {reaction_smarts}")
+                return None  # Handle appropriately, e.g., return None or raise an error
+
+        except Exception as e:
+            # provide detailked error information
+            raise RuntimeError(f"Failed to run reaction. Error: {str(e)}\n"
+                               f"Reaction SMARTS: {reaction_smarts}\n"
+                               f"Molecule: {Chem.MolToSmiles(molecule, canonical=True)}")
+    
+
+    # Example of one beta-oxidation cycle with reaction SMARTS
+    def beta_oxidation_cycle(self, acyl_coa_mol):
+        """
+        Perform one complete beta-oxidation cycle:
+
+        1. Dehydrogenation, 
+            Formation of a double bond between C_alpha and C_beta. 
+            (FAD → FADH₂)
+            Product: Beta-dehydroacyl-CoA
+            Catalyzed by: Flavin dehydrogenase (acyl-CoA dehydrogenase)
+
+        2. Hydration
+            Addition of H2O to the double bond
+            Product: beta-hydroxyacyl-CoA
+            Catalyzed by: Lyase (enoyl-CoA hydratase, also called crotonase)
+
+        3. Oxidation 
+            (aka second dehydrogenation)
+            (NAD⁺ → NADH)
+            Product: beta-oxoacyl-CoA (beta-ketoacyl-CoA)
+            Catalyzed by: Pyridine dehydrogenase (3-hydroxyacyl-CoA dehydrogenase)
+
+        4. Thiolysis
+            The beta-oxoacyl-CoA is highly unstable as a thioester and undergoes thiolytic cleavage.
+            Catalyzed by: Acyltransferase (beta-oxothiolase)
+            End result: Acetyl-CoA is released, and the fatty acid chain is shortened by two carbon atoms.
+        """
+    
+        # Define a list of the reaction steps using the SMARTS patterns
+        beta_reaction_steps = [
+            ("Dehydrogenation", SMARTS_REACTIONS["dehydrogenation"], 2),    # ATP yield for FADH2
+            ("Hydration", SMARTS_REACTIONS["hydration"], 0),                # No ATP yield
+            ("Oxidation", SMARTS_REACTIONS["oxidation"], 3),                # ATP yield for NADH
+            ("Thiolysis", SMARTS_REACTIONS["thiolysis"], 0),                # No ATP yield
+        ]
+    
+        # Store intermediate products and descriptions
+        products = [acyl_coa_mol]  # Initialize with input molecule
+
+        for step_name, reaction_smarts, atp_yield in beta_reaction_steps:
+            # Run each reaction
+            current_mol = products[-1]  # Get the most recent product
+
+            try: 
+                Chem.SanitizeMol(current_mol)  # Ensure the molecule is valid
+                current_mol.UpdatePropertyCache(strict=False)  # Ensure implicit valence is calculated
+
+                print(f"Before {step_name}: {Chem.MolToSmiles(current_mol)}")
+
+            except Exception as e:
+                print(f"Error sanitizing molecule at step {step_name}: {e}")
+                for atom in current_mol.GetAtoms():
+                    print(f"Atom {atom.GetIdx()} - {atom.GetSymbol()} valence: {atom.GetTotalValence()}")
+                continue
+
+            result = self.run_reaction(reaction_smarts, current_mol)
+
+            try:
+                Chem.SanitizeMol(result)
+                result.UpdatePropertyCache()
+                
+            except Exception as e:
+                print(f"Error sanitizing result at step {step_name}: {e}")
+                continue
+
+
+            if result is None:
+                print(f"Invalid result at step {step_name}")
+                continue
+
+            print(f"After {step_name}: {Chem.MolToSmiles(result)}")
+
+            # If multiple products (e.g., thiolysis), choose the longer fragment
+            #if isinstance(result, tuple):
+                # For thiolysis, pick the longer fatty acid fragment (avoid acetyl-CoA)
+                #result = max(result, key=lambda mol: mol.GetNumAtoms())
+
+            # Store reaction information
+            self.reaction_steps.append(step_name)
+            self.reaction_results.append(result)
+            self.reaction_descriptions.append(f"{step_name} (SMARTS: {reaction_smarts})")
+            print(f"\nAfter {step_name} step: {self.reaction_steps}")
+        
+            # Log ATP yield
+            self.atp_yield += atp_yield
+
+            # Append new product
+            products.append(result)
+
+        return products[-1]  # Return the final product of the cycle
+    
+    def run_complete_oxidation(self):
+        """
+        Run the complete beta-oxidation process from start to finish.
+        """
+        prev_length = None
+
+        # Clear previous results
+        self.reaction_steps = []
+        self.reaction_results = []
+        self.reaction_descriptions = []
+        self.reaction_cycles = [] 
+        self.atp_yield = 0  # Initialize ATP yield
+
+        # Initial step: Activation
+        current_mol = self.activate_fatty_acid()
+        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
+
+        # Transport step: Carnitine shuttle
+        current_mol = self.carnitine_shuttle(current_mol)
+        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
+
+        # Collect products
+        acetyl_coa_count = 0
+        propionyl_coa = None
+        cycle = 0
+
+        while True:
+            chain_length = self._get_carbon_chain_length(current_mol)
+            print(f"Cycle {cycle}: Chain length = {chain_length}")
+
+            if chain_length == prev_length:
+                print("Chain length not decreasing — breaking to avoid infinite loop.")
+                break
+
+            prev_length = chain_length
+
+            # Handle final steps
+            if chain_length == 2:
+                # Final acetyl-CoA
+                self.reaction_cycles.append(f"Final step: 2-carbon fragment to acetyl-CoA")
+                self.reaction_descriptions.append("Last 2-carbon unit converted to acetyl-CoA")
+                acetyl_coa_count += 1
+                break
+            elif chain_length == 3:
+                # Final step for odd-chain: propionyl-CoA
+                self.reaction_cycles.append(f"Final step: 3-carbon fragment to propionyl-CoA")
+                self.reaction_descriptions.append("Last 3-carbon unit converted to propionyl-CoA")
+                propionyl_coa = current_mol
+                break
+            elif chain_length < 2:
+                self.reaction_cycles.append("Error: Chain too short to process")
+                break
+
+            # Run a regular beta-oxidation cycle
+            cycle += 1
+            self.reaction_cycles.append(f"Cycle {cycle}")
+            self.reaction_descriptions.append(f"Starting beta-oxidation cycle {cycle}")
+            current_mol = self.beta_oxidation_cycle(current_mol)
+            acetyl_coa_count += 1
+
+        # Final energy calculation
+        self.atp_yield += self.calculate_atp_yield()['total_ATP']
+
+        return {
+            'final_products': {
+                'acetyl_coa_count': acetyl_coa_count,
+                'propionyl_coa': propionyl_coa is not None
+            },
+            'reaction_steps': self.reaction_steps,
+            'reaction_results': self.reaction_results,
+            'reaction_descriptions': self.reaction_descriptions,
+            'total_atp_yield': self.atp_yield
+        }
+
+    
+    def prepare_data_for_visualization(self):
+        """Prepare data structure for visualization."""
+        steps = []
+        for idx, (step, description, molecule) in enumerate(
+            zip(
+                self.reaction_steps,
+                self.reaction_descriptions,
+                self.reaction_results,
+            )
+        ):
+            
+            try:
+                Chem.SanitizeMol(molecule)
+                formula = Chem.rdMolDescriptors.CalcMolFormula(molecule)
+            except Exception:
+                formula = "Invalid"
+        
+            steps.append(
+                {
+                    "step_number": idx + 1,
+                    "step_name": step,
+                    "description": description,
+                    "molecule_smiles": Chem.MolToSmiles(molecule, canonical=True),
+                    "formula": formula,
+                }
+            )
+
+        return {
+            "steps": steps,
+            "total_atp_yield": self.atp_yield,
+        }
+
+
+    def visualize_reaction_sequence(self):
+        """Visualize the β-oxidation reaction steps."""
+        steps = []  # List to hold molecule images for each step
+
+        # Automatically generate the reaction_cycles list
+        num_non_cycle_steps = 2  # "activation" and "carnitine shuttle"
+        num_cycle_steps = len(self.reaction_steps) - num_non_cycle_steps
+
+        # Create the cycle labels (e.g., Cycle 1, Cycle 2, etc.), 4 steps per cycle
+        reaction_cycles = [None] * num_non_cycle_steps + [
+            f"Cycle {i // 4 + 1}" for i in range(num_cycle_steps)
+        ]
+
+        for idx, (step, description, molecule, cycle) in enumerate(
+            zip(self.reaction_steps, self.reaction_descriptions, self.reaction_results, reaction_cycles)
+        ):
+        
+            try:
+                # Sanitize the molecule before visualizing it
+                Chem.SanitizeMol(molecule)  # Sanitize the molecule to ensure it's valid
+            except Exception as e:
+                print(f"Error sanitizing molecule at step {step}: {e}")
+                continue  # Skip this step if sanitization fails
+                
+            print(f"Step {idx + 1}: {step}")
+            print(f"  Description: {description}")
+            print(f"  Result: {molecule}")
+            print(f"  Cycle: {cycle}")
+            print("-" * 40)
+            
+            # Create image for this step if molecule is valid
+            img = Draw.MolToImage(molecule)
+            steps.append(img)
+        
+        # Check if the number of steps in visualization matches the expected count
+        print(f"Number of steps in visualization: {len(steps)}")
+        print(f"Expected number of steps: {len(self.reaction_steps)}")
+
+        # Visualization code...
+        fig, axes = plt.subplots(len(steps), 1, figsize=(10, 5 * len(steps)))
+        for idx, img in enumerate(steps):
+            axes[idx].imshow(img)
+            axes[idx].axis('off')
+            axes[idx].set_title(f"Step {idx + 1}: {self.reaction_descriptions[idx]}")
+
+        return fig
+    
+
+
+
+
