@@ -7,7 +7,10 @@ from enum import Enum
 from itertools import zip_longest
 
 # Import Ema's code (saved in a file called fatty_acid.py)
-from lynen_spiral.fatty_acid import FattyAcidMetabolism, FattyAcidType
+import sys
+import os
+sys.path.append(os.path.abspath(r"C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral"))
+from fatty_acid import FattyAcidMetabolism, FattyAcidType #type: ignore
 
 # Common fatty acid names to SMILES dictionary
 FATTY_ACIDS = {

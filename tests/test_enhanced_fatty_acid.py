@@ -1,8 +1,13 @@
 import pytest
 from rdkit import Chem
 from rdkit.Chem import AllChem, MolFromSmiles, Draw
+
 import sys
-from lynen_spiral.enhanced_fatty_acid import EnhancedFattyAcidMetabolism #type: ignore
+import os
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+sys.path.append(os.path.abspath(r"C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral"))
+
+from enhanced_fatty_acid import EnhancedFattyAcidMetabolism #type: ignore
 
 # Test cases for input handling
 @pytest.mark.parametrize("input_value, expected_smiles", [
@@ -197,7 +202,7 @@ def test_visualize_reaction_sequence():
     assert os.path.exists("test_visualization_output.png"), "Visualization output file was not saved"
 
 def test_prepare_data_for_visualization():
-    # Set up test data
+    # Arrange
     mol = Chem.MolFromSmiles("CCCCCCCCCCCCCCCC(=O)O")  # Palmitic acid
     pathway = EnhancedFattyAcidMetabolism()
     pathway.reaction_steps = ["Fatty Acid Activation"]
@@ -205,10 +210,10 @@ def test_prepare_data_for_visualization():
     pathway.reaction_results = [mol]
     pathway.atp_yield = 129
 
-    # Run the method
+    # Act
     data = pathway.prepare_data_for_visualization()
 
-    # Assertions
+    # Assert
     assert data["metadata"]["total_steps"] == 1
     assert data["metadata"]["total_atp_yield"] == 129
 
