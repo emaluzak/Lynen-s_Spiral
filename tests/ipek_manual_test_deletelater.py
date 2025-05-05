@@ -1,43 +1,29 @@
 from rdkit import Chem
-from rdkit.Chem import AllChem
 
-# Thioesterized palmitic acid
-mol = Chem.MolFromSmiles("CCCCCCCCCCCCCCCC(=O)SC")
+import sys
+import os
 
-# Try dehydrogenation
-rxn_d = AllChem.ReactionFromSmarts("[C:1]-[CH2:2]-C(=O)-S >> [C:1]=[C:2]-C(=O)-S") 
-products_d = rxn_d.RunReactants((mol,))
-for i, ps in enumerate(products_d):
-    d_product = ps[0]
-    print(f"Product {i}: {Chem.MolToSmiles(d_product)}")
+sys.path.append(os.path.abspath(r"C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral"))
 
-# Sanitize and prepare the dehydrogenation product
-Chem.SanitizeMol(d_product)
+from enhanced_fatty_acid import EnhancedFattyAcidMetabolism #type: ignore
 
-# Try hydration
-rxn_h = AllChem.ReactionFromSmarts("[C:1](=O)[C:2]=[C:3] >> [C:1](=O)[C:2]([OH])[C:3]")
-products_h = rxn_h.RunReactants((d_product,))
-for i, ps in enumerate(products_h):
-    h_product = ps[0]
-    print(f"\nProduct {i}: {Chem.MolToSmiles(h_product)}")
+def manual_test_visualization_data():
+    # Create molecule for palmitic acid
+    #palmitic_acid = Chem.MolFromSmiles("CCCCCCCCCCCCCCCC(=O)O")
 
-# Sanitize and prepare the hydration product
-Chem.SanitizeMol(h_product)
+    # Initialize the metabolism object
+    pathway = EnhancedFattyAcidMetabolism("CCCCCCCCCCCCCCCC(=O)O")
 
-# More specific oxidation pattern
-# Ensuring that the hydroxyl group is adjacent to the carbonyl group
-rxn_o = AllChem.ReactionFromSmarts("[C:1]-[C:2]([OH:3])-[C:4](=O)S >> [C:1](=O)-[C:2]-[C:4](=O)S")
-products_o = rxn_o.RunReactants((h_product,))
-for i, ps in enumerate(products_o):
-    o_product = ps[0]
-    print(f"\nProduct {i}: {Chem.MolToSmiles(o_product)}")
+    # Run your simulation (you may have your own wrapper method)
+    #acyl_coa = pathway.activate_fatty_acid()
+    pathway.run_complete_oxidation()
 
-Chem.SanitizeMol(o_product)
+    # Get the visualization data
+    viz_data = pathway.prepare_data_for_visualization()
 
-# Try thiolysis
-rxn_t = AllChem.ReactionFromSmarts("[C:1](=[O:2])[C:3][C:4](=[O:5])S >> [C:1](=[O:2])O")
-products_t = rxn_t.RunReactants((o_product,))
-for i, ps in enumerate(products_t):
-    t_product = ps[i]
-    print(f"\nProduct {i}: {Chem.MolToSmiles(ps[0])}")
+    # Print results
+    from pprint import pprint
+    pprint(viz_data)
 
+if __name__ == "__main__":
+    manual_test_visualization_data()
