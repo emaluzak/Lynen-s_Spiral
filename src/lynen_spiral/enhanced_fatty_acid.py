@@ -7,9 +7,7 @@ from enum import Enum
 from itertools import zip_longest
 
 # Import Ema's code (saved in a file called fatty_acid.py)
-import sys
-sys.path.append(r'C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral')
-from fatty_acid import FattyAcidMetabolism, FattyAcidType # type: ignore
+from lynen_spiral.fatty_acid import FattyAcidMetabolism, FattyAcidType
 
 # Common fatty acid names to SMILES dictionary
 FATTY_ACIDS = {
@@ -57,7 +55,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         self.reaction_steps = []
         self.reaction_results = []
         self.reaction_descriptions = []
-        self.reaction_cycles = []
+        self.cycle_log = []
         self.atp_yield = 0
 
     def _process_input(self, input_value):
@@ -388,12 +386,28 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             self.reaction_results.append(result)
             self.reaction_descriptions.append(f"{step_name} (SMARTS: {reaction_smarts})")
             print(f"\nAfter {step_name} step: {self.reaction_steps}")
-        
+
+
             # Log ATP yield
             self.atp_yield += atp_yield
 
             # Append new product
             products.append(result)
+
+            cycle_steps = []  # Start new cycle log
+
+            cycle_steps.append({
+                "step": step_name,
+                "input": Chem.MolToSmiles(current_mol),
+                "output": Chem.MolToSmiles(result),
+                "smarts": reaction_smarts,
+                "atp_yield": atp_yield
+            })
+
+            self.cycle_log.append({
+                "cycle_number": len(self.cycle_log) + 1,
+                "steps": cycle_steps
+            })
 
         return products[-1]  # Return the final product of the cycle
     
@@ -408,6 +422,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         self.reaction_results = []
         self.reaction_descriptions = []
         self.reaction_cycles = [] 
+        self.cycle_log = []
         self.atp_yield = 0  # Initialize ATP yield
 
         # Initial step: Activation
@@ -473,36 +488,38 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
     
     def prepare_data_for_visualization(self):
-        """Prepare data structure for visualization."""
+        """Prepare a detailed, modular data structure for visualization."""
         steps = []
+
         for idx, (step, description, molecule) in enumerate(
-            zip(
-                self.reaction_steps,
-                self.reaction_descriptions,
-                self.reaction_results,
-            )
+            zip(self.reaction_steps, self.reaction_descriptions, self.reaction_results)
         ):
-            
             try:
                 Chem.SanitizeMol(molecule)
                 formula = Chem.rdMolDescriptors.CalcMolFormula(molecule)
+                smiles = Chem.MolToSmiles(molecule, canonical=True)
             except Exception:
                 formula = "Invalid"
-        
-            steps.append(
-                {
-                    "step_number": idx + 1,
-                    "step_name": step,
-                    "description": description,
-                    "molecule_smiles": Chem.MolToSmiles(molecule, canonical=True),
-                    "formula": formula,
-                }
-            )
+                smiles = "Invalid"
+
+            steps.append({
+                "index": idx,
+                "step_number": idx + 1,
+                "name": step,
+                "description": description,
+                "smiles": smiles,
+                "formula": formula,
+                # Could add timestamps, energies, or coordinates if available
+            })
 
         return {
+            "metadata": {
+                "total_steps": len(steps),
+                "total_atp_yield": self.atp_yield,
+            },
             "steps": steps,
-            "total_atp_yield": self.atp_yield,
         }
+
 
 
     def visualize_reaction_sequence(self):
@@ -552,7 +569,3 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         return fig
     
-
-
-
-
