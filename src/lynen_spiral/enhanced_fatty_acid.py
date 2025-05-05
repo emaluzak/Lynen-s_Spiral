@@ -504,7 +504,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
                 smiles = "Invalid"
 
             steps.append({
-                "index": idx,
+                "index": int(idx),
                 "step_number": idx + 1,
                 "name": step,
                 "description": description,
@@ -521,51 +521,47 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             "steps": steps,
             "cycles": self.cycle_log,  # <- added raw cycle log directly
         }
-
     def visualize_reaction_sequence(self):
         """Visualize the β-oxidation reaction steps."""
         steps = []  # List to hold molecule images for each step
 
         # Automatically generate the reaction_cycles list
-        num_non_cycle_steps = 2  # "activation" and "carnitine shuttle"
-        num_cycle_steps = len(self.reaction_steps) - num_non_cycle_steps
+        num_non_cycle_steps = 2  # "activation" and "transport" steps
+        total_steps = num_non_cycle_steps + len(self.reaction_steps)
 
-        # Create the cycle labels (e.g., Cycle 1, Cycle 2, etc.), 4 steps per cycle
-        reaction_cycles = [None] * num_non_cycle_steps + [
-            f"Cycle {i // 4 + 1}" for i in range(num_cycle_steps)
-        ]
-
-        for idx, (step, description, molecule, cycle) in enumerate(
-            zip(self.reaction_steps, self.reaction_descriptions, self.reaction_results, reaction_cycles)
+        # Prepare the visualization for each step
+        for idx, (step, description, molecule) in enumerate(
+            zip(
+                self.reaction_steps,
+                self.reaction_descriptions,
+                self.reaction_results,
+            )
         ):
-        
+            # Generate a molecule image for this step
             try:
-                # Sanitize the molecule before visualizing it
-                Chem.SanitizeMol(molecule)  # Sanitize the molecule to ensure it's valid
+                mol_image = Draw.MolToImage(molecule, size=(300, 300))
             except Exception as e:
-                print(f"Error sanitizing molecule at step {step}: {e}")
-                continue  # Skip this step if sanitization fails
-                
-            print(f"Step {idx + 1}: {step}")
-            print(f"  Description: {description}")
-            print(f"  Result: {molecule}")
-            print(f"  Cycle: {cycle}")
-            print("-" * 40)
-            
-            # Create image for this step if molecule is valid
-            img = Draw.MolToImage(molecule)
-            steps.append(img)
-        
-        # Check if the number of steps in visualization matches the expected count
-        print(f"Number of steps in visualization: {len(steps)}")
-        print(f"Expected number of steps: {len(self.reaction_steps)}")
+                print(f"Error generating image for step {idx+1}: {e}")
+                continue
 
-        # Visualization code...
-        fig, axes = plt.subplots(len(steps), 1, figsize=(10, 5 * len(steps)))
-        for idx, img in enumerate(steps):
-            axes[idx].imshow(img)
-            axes[idx].axis('off')
-            axes[idx].set_title(f"Step {idx + 1}: {self.reaction_descriptions[idx]}")
+            # Store step data for visualization
+            steps.append({
+                "step_number": idx + 1,
+                "step_name": step,
+                "description": description,
+                "molecule_image": mol_image
+            })
 
-        return fig
+        # Visualize all the steps (this could be displayed or saved depending on your visualization platform)
+        fig, axs = plt.subplots(1, len(steps), figsize=(5 * len(steps), 5))
+        for ax, step in zip(axs, steps):
+            ax.imshow(step["molecule_image"])
+            ax.set_title(f"Step {step['step_number']}: {step['step_name']}")
+            ax.axis('off')
+
+        plt.tight_layout()
+        plt.show()
+
+
+
     
