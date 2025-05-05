@@ -2,9 +2,7 @@ import pytest
 from rdkit import Chem
 from rdkit.Chem import AllChem, MolFromSmiles, Draw
 import sys
-sys.path.append(r'C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral')
-from enhanced_fatty_acid import EnhancedFattyAcidMetabolism # type: ignore
-
+from lynen_spiral.enhanced_fatty_acid import EnhancedFattyAcidMetabolism #type: ignore
 
 # Test cases for input handling
 @pytest.mark.parametrize("input_value, expected_smiles", [
@@ -197,3 +195,25 @@ def test_visualize_reaction_sequence():
     # Check if the saved figure exists (optional)
     import os
     assert os.path.exists("test_visualization_output.png"), "Visualization output file was not saved"
+
+def test_prepare_data_for_visualization():
+    # Set up test data
+    mol = Chem.MolFromSmiles("CCCCCCCCCCCCCCCC(=O)O")  # Palmitic acid
+    pathway = EnhancedFattyAcidMetabolism()
+    pathway.reaction_steps = ["Fatty Acid Activation"]
+    pathway.reaction_descriptions = ["Activation of palmitic acid to acyl-CoA"]
+    pathway.reaction_results = [mol]
+    pathway.atp_yield = 129
+
+    # Run the method
+    data = pathway.prepare_data_for_visualization()
+
+    # Assertions
+    assert data["metadata"]["total_steps"] == 1
+    assert data["metadata"]["total_atp_yield"] == 129
+
+    step = data["steps"][0]
+    assert step["name"] == "Fatty Acid Activation"
+    assert step["smiles"] == "CCCCCCCCCCCCCCCC(=O)O"
+    assert step["formula"] == "C16H32O2"
+    assert step["step_number"] == 1
