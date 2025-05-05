@@ -201,7 +201,7 @@ def test_visualize_reaction_sequence():
     import os
     assert os.path.exists("test_visualization_output.png"), "Visualization output file was not saved"
 
-def test_prepare_data_for_visualization():
+def test_prepare_data_for_visualization(): # this test is probably wrong
     # Arrange
     mol = Chem.MolFromSmiles("CCCCCCCCCCCCCCCC(=O)O")  # Palmitic acid
     pathway = EnhancedFattyAcidMetabolism()

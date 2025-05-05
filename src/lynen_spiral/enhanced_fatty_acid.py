@@ -345,6 +345,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
     
         # Store intermediate products and descriptions
         products = [acyl_coa_mol]  # Initialize with input molecule
+        cycle_steps = []  # Start new cycle log
 
         for step_name, reaction_smarts, atp_yield in beta_reaction_steps:
             # Run each reaction
@@ -390,14 +391,11 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             self.reaction_descriptions.append(f"{step_name} (SMARTS: {reaction_smarts})")
             print(f"\nAfter {step_name} step: {self.reaction_steps}")
 
-
             # Log ATP yield
             self.atp_yield += atp_yield
 
             # Append new product
             products.append(result)
-
-            cycle_steps = []  # Start new cycle log
 
             cycle_steps.append({
                 "step": step_name,
@@ -407,10 +405,10 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
                 "atp_yield": atp_yield
             })
 
-            self.cycle_log.append({
-                "cycle_number": len(self.cycle_log) + 1,
-                "steps": cycle_steps
-            })
+        self.cycle_log.append({
+            "cycle_number": len(self.cycle_log) + 1,
+            "steps": cycle_steps
+     })
 
         return products[-1]  # Return the final product of the cycle
     
@@ -512,18 +510,17 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
                 "description": description,
                 "smiles": smiles,
                 "formula": formula,
-                # Could add timestamps, energies, or coordinates if available
             })
 
         return {
             "metadata": {
                 "total_steps": len(steps),
                 "total_atp_yield": self.atp_yield,
+                "total_cycles": len(self.cycle_log),
             },
             "steps": steps,
+            "cycles": self.cycle_log,  # <- added raw cycle log directly
         }
-
-
 
     def visualize_reaction_sequence(self):
         """Visualize the β-oxidation reaction steps."""
