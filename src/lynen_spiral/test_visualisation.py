@@ -1,3 +1,4 @@
+from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
