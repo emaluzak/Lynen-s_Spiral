@@ -116,6 +116,41 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
     
         double_bonds.sort(reverse=True)
         return f"{num_carbons}:{len(double_bonds)}(ω-{','.join(map(str, double_bonds))})"
+    
+    def calculate_atp_yield(self):
+        """Calculate ATP yield from all completed reaction steps."""
+        # ATP equivalents from different steps
+        atp_values = {
+            "Activation": -2,  # ATP → AMP + 2Pi (equivalent to -2 ATP)
+            "Dehydrogenation": 1.5 * 2,  # FADH2 → 1.5 ATP (but we multiply by 2 for Q-cycle)
+            "Oxidation": 2.5,  # NADH → 2.5 ATP
+            "Acetyl-CoA": 10,  # Each acetyl-CoA in TCA → ~10 ATP
+        }
+
+        total_atp = 0
+        acetyl_coa_count = 0
+
+        # Count steps and acetyl-CoA produced
+        for step in self.reaction_steps:
+            if step in atp_values:
+                total_atp += atp_values[step]
+    
+        # Count acetyl-CoA produced (each cycle produces 1)
+        acetyl_coa_count = len([x for x in self.reaction_steps if x == "Thiolysis"])
+    
+        # Add ATP from acetyl-CoA oxidation
+        total_atp += acetyl_coa_count * atp_values["Acetyl-CoA"]
+
+        return {
+            'total_ATP': total_atp,
+            'acetyl_coa_count': acetyl_coa_count,
+            'breakdown': {
+                'activation_cost': atp_values["Activation"],
+                'fadh2_yield': len([x for x in self.reaction_steps if x == "Dehydrogenation"]) * atp_values["Dehydrogenation"],
+                'nadh_yield': len([x for x in self.reaction_steps if x == "Oxidation"]) * atp_values["Oxidation"],
+                'acetyl_coa_yield': acetyl_coa_count * atp_values["Acetyl-CoA"]
+            }
+        }
 
 
     def parse_fatty_acid_notation(self, notation):
@@ -150,6 +185,19 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         except Exception as e:
             raise ValueError(f"Invalid fatty acid notation '{notation}': {str(e)}")
+        
+    def _get_carbon_chain_length(self, mol):
+        """Calculate the length of the carbon chain (excluding carboxyl group)"""
+        # Count only carbons in the main chain
+        carbon_count = 0
+        for atom in mol.GetAtoms():
+            if atom.GetAtomicNum() == 6:  # Carbon atom
+                # Exclude the carboxyl carbon (connected to =O and -O)
+                neighbors = [x.GetAtomicNum() for x in atom.GetNeighbors()]
+                if 8 in neighbors and neighbors.count(8) >= 2:  # Carboxyl carbon
+                    continue
+                carbon_count += 1
+        return carbon_count
     
 
     def construct_backbone(self, num_carbons, double_bond_count, bond_positions):
@@ -444,11 +492,9 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         return products[-1]  # Return the final product of the cycle
     
     def run_complete_oxidation(self):
-        """
-        Run the complete beta-oxidation process from start to finish.
-        """
+        """Run the complete beta-oxidation process from start to finish."""
         prev_length = None
-
+    
         # Clear previous results
         self.reaction_steps = []
         self.reaction_results = []
@@ -459,12 +505,10 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         # Initial step: Activation
         current_mol = self.activate_fatty_acid()
-        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
-
+    
         # Transport step: Carnitine shuttle
         current_mol = self.carnitine_shuttle(current_mol)
-        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
-
+    
         # Collect products
         acetyl_coa_count = 0
         propionyl_coa = None
@@ -472,10 +516,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         while True:
             chain_length = self._get_carbon_chain_length(current_mol)
+            
+            # Debug output
             print(f"Cycle {cycle}: Chain length = {chain_length}")
-
+        
             if chain_length == prev_length:
-                print("Chain length not decreasing — breaking to avoid infinite loop.")
+                print("Chain length not decreasing - breaking to avoid infinite loop.")
                 break
 
             prev_length = chain_length
@@ -483,14 +529,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             # Handle final steps
             if chain_length == 2:
                 # Final acetyl-CoA
-                self.reaction_cycles.append(f"Final step: 2-carbon fragment to acetyl-CoA")
-                self.reaction_descriptions.append("Last 2-carbon unit converted to acetyl-CoA")
+                self.reaction_cycles.append("Final step: 2-carbon fragment to acetyl-CoA")
                 acetyl_coa_count += 1
                 break
             elif chain_length == 3:
                 # Final step for odd-chain: propionyl-CoA
-                self.reaction_cycles.append(f"Final step: 3-carbon fragment to propionyl-CoA")
-                self.reaction_descriptions.append("Last 3-carbon unit converted to propionyl-CoA")
+                self.reaction_cycles.append("Final step: 3-carbon fragment to propionyl-CoA")
                 propionyl_coa = current_mol
                 break
             elif chain_length < 2:
@@ -500,12 +544,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             # Run a regular beta-oxidation cycle
             cycle += 1
             self.reaction_cycles.append(f"Cycle {cycle}")
-            self.reaction_descriptions.append(f"Starting beta-oxidation cycle {cycle}")
             current_mol = self.beta_oxidation_cycle(current_mol)
             acetyl_coa_count += 1
 
         # Final energy calculation
-        self.atp_yield += self.calculate_atp_yield()['total_ATP']
+        atp_calculation = self.calculate_atp_yield()
+        self.atp_yield = atp_calculation['total_ATP']
 
         return {
             'final_products': {
@@ -515,7 +559,8 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             'reaction_steps': self.reaction_steps,
             'reaction_results': self.reaction_results,
             'reaction_descriptions': self.reaction_descriptions,
-            'total_atp_yield': self.atp_yield
+            'total_atp_yield': self.atp_yield,
+            'atp_breakdown': atp_calculation['breakdown']  # Added ATP breakdown
         }
     
     def prepare_data_for_visualization(self):

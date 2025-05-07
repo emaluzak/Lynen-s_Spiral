@@ -1,6 +1,9 @@
 import streamlit as st
 from rdkit import Chem
 from rdkit.Chem import Draw
+import py3Dmol
+
+st.set_page_config(layout="wide")
 
 st.title("2D Cycle Representation")
 
