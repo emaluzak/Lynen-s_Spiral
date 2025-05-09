@@ -45,10 +45,25 @@ st.markdown("""
 - Activation costs 2 ATP (ATP → AMP + 2Pi)
 """)
 
-# Display all cycles and steps
+# Add cycle selection at the top
+if processor.cycle_log:
+    cycle_options = [f"Cycle {i+1}" for i in range(len(processor.cycle_log))]
+    cycle_options.append("All Cycles")
+    selected_cycle = st.selectbox("Select a cycle to view:", cycle_options, index=len(cycle_options)-1)
+else:
+    st.warning("No oxidation cycles found")
+    selected_cycle = "All Cycles"
+
+# Display selected cycle(s)
 st.subheader("Beta Oxidation Steps")
 
-for cycle_num, cycle in enumerate(processor.cycle_log, 1):
+if selected_cycle == "All Cycles":
+    cycles_to_display = processor.cycle_log
+else:
+    cycle_num = int(selected_cycle.split()[1]) - 1
+    cycles_to_display = [processor.cycle_log[cycle_num]]
+
+for cycle_num, cycle in enumerate(cycles_to_display, 1 if selected_cycle == "All Cycles" else int(selected_cycle.split()[1])):
     st.markdown(f"### Cycle {cycle_num}")
     
     for step in cycle['steps']:
@@ -60,10 +75,10 @@ for cycle_num, cycle in enumerate(processor.cycle_log, 1):
             product = Chem.MolFromSmiles(step['output'])
             
             st.markdown("**Reactant**")
-            st.image(Draw.MolToImage(reactant), use_column_width=True)
+            st.image(Draw.MolToImage(reactant), use_container_width=True)
             
             st.markdown("**Product**")
-            st.image(Draw.MolToImage(product), use_column_width=True)
+            st.image(Draw.MolToImage(product), use_container_width=True)
             
         with col2:
             # Display step information
