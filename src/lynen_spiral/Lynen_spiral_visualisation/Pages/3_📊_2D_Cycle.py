@@ -1,32 +1,109 @@
-import streamlit as st
+import streamlit as st 
 from rdkit import Chem
 from rdkit.Chem import Draw
-import py3Dmol
+import sys
+import os
 
 st.set_page_config(layout="wide")
-
 st.title("2D Cycle Representation")
+
+sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
+from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
 # Get data from previous pages
 fa_data = st.session_state.get('fa_data', {})
+processor = fa_data.get('processor', None)
 
-# Display all steps
-steps = {
-    "Activation": "CCCCCCCCCCCCCCCC(=O)O>>CCCCCCCCCCCCCCC(=O)SCC",
-    "First oxidation": "CCCCCCCCCCCCCCC(=O)SCC>>CCCCCCCCCCCCC=CC(=O)SCC",
-    # Add all steps with example SMILES
-}
+if not processor:
+    st.warning("No fatty acid data found. Please go back to the home page and start again.")
+    if st.button("Back to Home"):
+        st.switch_page("app.py")
+    st.stop()
 
-selected_step = st.selectbox("Select a step:", list(steps.keys()))
+# Run complete oxidation if not already done
+if 'oxidation_results' not in st.session_state:
+    with st.spinner("Running beta oxidation..."):
+        st.session_state.oxidation_results = processor.run_complete_oxidation()
 
-# Display selected step
-if selected_step:
-    mol = Chem.MolFromSmiles(steps[selected_step].split(">>")[0])
-    img = Draw.MolToImage(mol)
-    st.image(img, caption=f"Reactant: {selected_step}", use_column_width=True)
+results = st.session_state.oxidation_results
+
+# Display ATP calculations
+st.subheader("ATP Yield Calculation")
+atp_data = processor.calculate_atp_yield()
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total ATP Yield", f"{atp_data['total_ATP']:.1f}")
+col2.metric("Activation Cost", f"{atp_data['breakdown']['activation_cost']:.1f}", delta="-2 ATP")
+col3.metric("FADH2 Yield", f"{atp_data['breakdown']['fadh2_yield']:.1f}", delta="1.5 ATP each")
+col4.metric("NADH Yield", f"{atp_data['breakdown']['nadh_yield']:.1f}", delta="2.5 ATP each")
+
+st.markdown("""
+**ATP Calculation Breakdown:**
+- Each FADH₂ produces ~1.5 ATP (through electron transport chain)
+- Each NADH produces ~2.5 ATP (through electron transport chain)
+- Each acetyl-CoA produces ~10 ATP (through TCA cycle)
+- Activation costs 2 ATP (ATP → AMP + 2Pi)
+""")
+
+# Display all cycles and steps
+st.subheader("Beta Oxidation Steps")
+
+for cycle_num, cycle in enumerate(processor.cycle_log, 1):
+    st.markdown(f"### Cycle {cycle_num}")
     
-    # Add mechanism details, ATP calculations, etc.
-    
+    for step in cycle['steps']:
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            # Display reactant and product structures
+            reactant = Chem.MolFromSmiles(step['input'])
+            product = Chem.MolFromSmiles(step['output'])
+            
+            st.markdown("**Reactant**")
+            st.image(Draw.MolToImage(reactant), use_column_width=True)
+            
+            st.markdown("**Product**")
+            st.image(Draw.MolToImage(product), use_column_width=True)
+            
+        with col2:
+            # Display step information
+            st.markdown(f"**{step['step']}**")
+            
+            if step['step'] == "Dehydrogenation":
+                st.markdown("- FAD → FADH₂ (1.5 ATP)")
+                st.markdown("- Catalyzed by Acyl-CoA dehydrogenase")
+            elif step['step'] == "Hydration":
+                st.markdown("- H₂O added across double bond")
+                st.markdown("- Catalyzed by Enoyl-CoA hydratase")
+            elif step['step'] == "Oxidation":
+                st.markdown("- NAD⁺ → NADH (2.5 ATP)")
+                st.markdown("- Catalyzed by 3-Hydroxyacyl-CoA dehydrogenase")
+            elif step['step'] == "Thiolysis":
+                st.markdown("- Cleavage by thiolase")
+                st.markdown("- Produces Acetyl-CoA")
+            
+            st.markdown(f"**SMARTS Pattern:** `{step['smarts']}`")
+            
+            if step['atp_yield'] > 0:
+                st.markdown(f"**ATP Yield:** +{step['atp_yield']:.1f}")
+            
+            # Show the reaction transformation
+            st.markdown("**Reaction:**")
+            st.code(f"{step['input']} → {step['output']}")
+        
+        st.divider()
+
+# Final products summary
+st.subheader("Final Products")
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown(f"**Acetyl-CoA produced:** {results['final_products']['acetyl_coa_count']}")
+with col2:
+    if results['final_products']['propionyl_coa']:
+        st.markdown("**Propionyl-CoA produced** (odd-chain fatty acid)")
+    else:
+        st.markdown("**No Propionyl-CoA produced** (even-chain fatty acid)")
+
 # Navigation buttons
 col1, col2 = st.columns(2)
 with col1:
