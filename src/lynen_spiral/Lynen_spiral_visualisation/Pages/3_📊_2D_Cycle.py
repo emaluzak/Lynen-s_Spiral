@@ -4,10 +4,10 @@ from rdkit.Chem import Draw
 import sys
 import os
 
-st.set_page_config(layout="wide")
-st.title("2D Cycle Representation")
+#st.set_page_config(layout="wide")
+#st.title("2D Cycle Representation")
 
-sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
+#sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
 # Get data from previous pages
