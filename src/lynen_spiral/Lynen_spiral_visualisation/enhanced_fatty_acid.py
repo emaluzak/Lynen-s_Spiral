@@ -10,17 +10,7 @@ from itertools import zip_longest
 import sys
 import os
 sys.path.append(os.path.abspath(r"C:\Users\ipeki\git\Lynen-s_Spiral\Lynen-s_Spiral\src\lynen_spiral"))
-# Replace this import:
-# from fatty_acid import FattyAcidMetabolism, FattyAcidType
-
-# With this class definition:
-class FattyAcidMetabolism:
-    """Base class for fatty acid metabolism"""
-    def __init__(self, smiles):
-        self.molecule = Chem.MolFromSmiles(smiles)
-        if not self.molecule:
-            raise ValueError("Invalid SMILES string")
-            
+from fatty_acid import FattyAcidMetabolism, FattyAcidType #type: ignore
 
 # Common fatty acid names to SMILES dictionary
 FATTY_ACIDS = {
@@ -38,8 +28,10 @@ SMARTS_REACTIONS = {
     # 1. Dehydrogenation: Remove two hydrogens to form a double bond between alpha and beta carbon
     "dehydrogenation": "[C:1]-[CH2:2]-C(=O)-S >> [C:1]=[C:2]-C(=O)-S",
 
+    "alternative_dehydrogenation": "[C:1]=[C:2]-[C:3]-C(=O)-S >> [C:1]-[C:2]=[C:3]-C(=O)-S",
+
     # 2. Hydration: Add OH to beta-carbon, H to alpha-carbon
-    "hydration": "[C:1](=O)[C:2]=[C:3] >> [C:1](=O)[C:2]([OH])[C:3]",
+    "hydration": "[C:1]=[C:2]~[C:3](=O)-S >> [C:1]-[C:2]([OH])-[C:3](=O)-S",
 
     # 3. Oxidation: Oxidize beta-carbon alcohol (OH) to ketone (=O)
     "oxidation": "[C:1]-[C:2]([OH:3])-[C:4](=O)S >> [C:1](=O)-[C:2]-[C:4](=O)S",
@@ -95,62 +87,6 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         raise ValueError(
             f"Unrecognized input format: {input_value}. Use SMILES, common name, or CX:Y notation."
         )
-    
-    def get_systematic_name(self):
-        """Generate systematic IUPAC-style name for the fatty acid."""
-        mol = self.molecule
-        if not mol:
-            return "Invalid molecule"
-        
-        num_carbons = len([a for a in mol.GetAtoms() if a.GetAtomicNum() == 6]) - 1
-    
-        double_bonds = []
-        for bond in mol.GetBonds():
-            if bond.GetBondType() == Chem.BondType.DOUBLE:
-                a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
-                pos = min(num_carbons - a1, num_carbons - a2) + 1
-                double_bonds.append(pos)
-    
-        if not double_bonds:
-            return f"{num_carbons}:0 (saturated)"
-    
-        double_bonds.sort(reverse=True)
-        return f"{num_carbons}:{len(double_bonds)}(ω-{','.join(map(str, double_bonds))})"
-    
-    def calculate_atp_yield(self):
-        """Calculate ATP yield from all completed reaction steps."""
-        # ATP equivalents from different steps
-        atp_values = {
-            "Activation": -2,  # ATP → AMP + 2Pi (equivalent to -2 ATP)
-            "Dehydrogenation": 1.5 * 2,  # FADH2 → 1.5 ATP (but we multiply by 2 for Q-cycle)
-            "Oxidation": 2.5,  # NADH → 2.5 ATP
-            "Acetyl-CoA": 10,  # Each acetyl-CoA in TCA → ~10 ATP
-        }
-
-        total_atp = 0
-        acetyl_coa_count = 0
-
-        # Count steps and acetyl-CoA produced
-        for step in self.reaction_steps:
-            if step in atp_values:
-                total_atp += atp_values[step]
-    
-        # Count acetyl-CoA produced (each cycle produces 1)
-        acetyl_coa_count = len([x for x in self.reaction_steps if x == "Thiolysis"])
-    
-        # Add ATP from acetyl-CoA oxidation
-        total_atp += acetyl_coa_count * atp_values["Acetyl-CoA"]
-
-        return {
-            'total_ATP': total_atp,
-            'acetyl_coa_count': acetyl_coa_count,
-            'breakdown': {
-                'activation_cost': atp_values["Activation"],
-                'fadh2_yield': len([x for x in self.reaction_steps if x == "Dehydrogenation"]) * atp_values["Dehydrogenation"],
-                'nadh_yield': len([x for x in self.reaction_steps if x == "Oxidation"]) * atp_values["Oxidation"],
-                'acetyl_coa_yield': acetyl_coa_count * atp_values["Acetyl-CoA"]
-            }
-        }
 
 
     def parse_fatty_acid_notation(self, notation):
@@ -185,19 +121,6 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         except Exception as e:
             raise ValueError(f"Invalid fatty acid notation '{notation}': {str(e)}")
-        
-    def _get_carbon_chain_length(self, mol):
-        """Calculate the length of the carbon chain (excluding carboxyl group)"""
-        # Count only carbons in the main chain
-        carbon_count = 0
-        for atom in mol.GetAtoms():
-            if atom.GetAtomicNum() == 6:  # Carbon atom
-                # Exclude the carboxyl carbon (connected to =O and -O)
-                neighbors = [x.GetAtomicNum() for x in atom.GetNeighbors()]
-                if 8 in neighbors and neighbors.count(8) >= 2:  # Carboxyl carbon
-                    continue
-                carbon_count += 1
-        return carbon_count
     
 
     def construct_backbone(self, num_carbons, double_bond_count, bond_positions):
@@ -250,6 +173,188 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         except Exception as e:
             raise ValueError(f"Error converting notation '{notation}': {str(e)}")
 
+    # ------------------ Methods to Hande Cis Double Bonds ------------------
+
+    def get_double_bond_info(self, mol):
+        """Identify all double bonds and their properties (position, cis/trans)."""
+        double_bonds = []
+        for bond in mol.GetBonds():
+            if bond.GetBondType() == Chem.BondType.DOUBLE:
+                # Get the atoms involved in the double bond
+                begin_atom = bond.GetBeginAtom()
+                end_atom = bond.GetEndAtom()
+            
+                # Determine if it's cis or trans
+                stereo = bond.GetStereo()
+                is_cis = (stereo == Chem.BondStereo.STEREOCIS)
+            
+                # Get neighbor atoms for E/Z determination
+                neighbors = []
+                for atom in [begin_atom, end_atom]:
+                    neighbors.append([n.GetIdx() for n in atom.GetNeighbors() if n.GetIdx() not in [begin_atom.GetIdx(), end_atom.GetIdx()]])
+            
+                position = self._get_double_bond_position(mol, begin_atom.GetIdx())
+                bond_info = {
+                    'atoms': (begin_atom.GetIdx(), end_atom.GetIdx()),
+                    'position': position,
+                    'stereo': 'cis' if is_cis else 'trans',
+                    'neighbors': neighbors
+                }
+                double_bonds.append(bond_info)
+
+                print(f"Atom {bond_info['atoms'][0]}-{bond_info['atoms'][1]} | "
+                      f"Position: {bond_info['position']} | "
+                      f"Stereo: {bond_info['stereo']}")
+
+        return double_bonds
+
+    def _get_double_bond_position(self, mol, atom_idx):
+        """Determine the position of a double bond relative to the thioester end."""
+        # Traverse from the thioester carbon (C=O-S) to find position
+        # This assumes the thioester is at position 1
+        position = 0
+        atom = mol.GetAtomWithIdx(atom_idx)
+    
+        # Simple approach - count atoms from the carbonyl carbon
+        # You may need to adjust this based on your exact molecular representation
+        while atom.GetAtomicNum() == 6:  # While it's a carbon
+            position += 1
+            # Get the neighbor that's part of the main chain
+            neighbors = [n for n in atom.GetNeighbors() 
+                        if n.GetAtomicNum() == 6 and n.GetIdx() != atom_idx]
+            if not neighbors:
+                break
+            atom_idx = atom.GetIdx()
+            atom = neighbors[0]
+    
+        return position
+
+    def handle_cis_double_bonds(self, mol):
+        """Convert Δ³-cis bonds to trans."""
+        double_bonds = self.get_double_bond_info(mol)
+    
+        for bond_info in double_bonds:
+            # Get the actual RDKit bond
+            bond = mol.GetBondBetweenAtoms(*bond_info['atoms'])
+        
+            # Debug print to verify everything
+            print(f"\nBond between atoms {bond_info['atoms']}:")
+            print(f"From dict: position={bond_info['position']}, stereo={bond_info['stereo']}")
+            print(f"From RDKit: stereo={bond.GetStereo()} (cis={bond.GetStereo() == Chem.BondStereo.STEREOCIS})")
+            
+            # Only act on Δ³-cis regardless of even/odd
+            if bond_info['stereo'] == 'cis' and bond_info['position'] == 3:
+                print(f"Converting Δ³-cis to Δ²-trans at atoms {bond_info['atoms']}")
+                return self._convert_cis_to_trans(mol, bond_info['atoms'])
+    
+        return mol
+
+    def _convert_cis_to_trans(self, mol, atom_indices):
+        """Convert a specific cis double bond to trans configuration."""
+        # Find the bond between these atoms
+        bond = mol.GetBondBetweenAtoms(atom_indices[0], atom_indices[1])
+        if bond:
+            # Set the bond stereochemistry to trans
+            bond.SetStereo(Chem.BondStereo.STEREOTRANS)
+            # Update the molecule
+            mol.UpdatePropertyCache(strict=False)
+            Chem.SanitizeMol(mol)
+        
+            # Log this modification
+            self.reaction_steps.append("Cis-Trans Isomerization")
+            self.reaction_descriptions.append(
+                f"Converted cis double bond (atoms {atom_indices}) to trans configuration"
+            )
+        return mol
+    
+    # ------------------ Methods to Handle Double Bonds Between Cα-Cβ or Cβ-Cγ ------------------
+    
+    def find_carbonyl_carbon(self, mol):
+        """
+        Find the carbonyl carbon (C=O) in the thioester group (C=O–S).
+        Returns the index of the carbonyl carbon atom if found, otherwise None.
+        """
+        for atom in mol.GetAtoms():
+            if atom.GetSymbol() == "S":
+                # Check for a neighboring carbon with a double bond to oxygen (C=O)
+                for neighbor in atom.GetNeighbors():
+                    if neighbor.GetSymbol() == "C":
+                        # Check if this carbon has a double bond to oxygen
+                        for carbonyl_neighbor in neighbor.GetNeighbors():
+                            if carbonyl_neighbor.GetSymbol() == "O" and mol.GetBondBetweenAtoms(neighbor.GetIdx(), carbonyl_neighbor.GetIdx()).GetBondType() == Chem.BondType.DOUBLE:
+                                print(f"Found carbonyl carbon at index {neighbor.GetIdx()} (C=O-S) with sulfur at index {atom.GetIdx()}")
+                                return neighbor.GetIdx()  # Return the index of the carbonyl carbon
+        return None  # Return None if no carbonyl carbon is found
+    
+    def get_alpha_beta_gamma_carbons(self, mol):
+        carbonyl_c = self.find_carbonyl_carbon(mol)
+        if carbonyl_c is None:
+            print("No carbonyl carbon found.")
+            return None, None, None
+
+        carbonyl_atom = mol.GetAtomWithIdx(carbonyl_c)
+
+        # Find Cα: carbon directly bonded to the carbonyl carbon
+        c_alpha = None
+        for nbr in carbonyl_atom.GetNeighbors():
+            if nbr.GetAtomicNum() == 6:  # Carbon
+                c_alpha = nbr.GetIdx()
+                print(f"Found Cα at index {c_alpha}")
+                break
+
+        if c_alpha is None:
+            print("No Cα found.")
+            return None, None, None
+
+        # Find Cβ: carbon bonded to Cα, but not the carbonyl carbon
+        c_beta = None
+        for nbr in mol.GetAtomWithIdx(c_alpha).GetNeighbors():
+            if nbr.GetAtomicNum() == 6 and nbr.GetIdx() != carbonyl_c:
+                c_beta = nbr.GetIdx()
+                print(f"Found Cβ at index {c_beta}")
+                break
+
+        if c_beta is None:
+            print("No Cβ found.")
+            return c_alpha, None, None
+
+        # Find Cγ: carbon bonded to Cβ, not Cα
+        c_gamma = None
+        for nbr in mol.GetAtomWithIdx(c_beta).GetNeighbors():
+            if nbr.GetAtomicNum() == 6 and nbr.GetIdx() != c_alpha:
+                c_gamma = nbr.GetIdx()
+                print(f"Found Cγ at index {c_gamma}")
+                break
+
+        return c_alpha, c_beta, c_gamma
+
+    def has_alpha_beta_double_bond(self, mol):
+        c_alpha, c_beta, c_gamma = self.get_alpha_beta_gamma_carbons(mol)
+        if c_alpha is None or c_beta is None:
+            return False
+
+        # Check α-β double bond
+        bond_ab = mol.GetBondBetweenAtoms(c_alpha, c_beta)
+        if bond_ab and bond_ab.GetBondType() == Chem.BondType.DOUBLE:
+            print(f"Found double bond between Cα (index {c_alpha}) and Cβ (index {c_beta}).")
+            return True
+
+        print(f"No double bond found between Cα-Cβ.")
+        return False
+    
+    def has_beta_gamma_double_bond(self, mol):
+        c_alpha, c_beta, c_gamma = self.get_alpha_beta_gamma_carbons(mol)
+        if c_alpha is None or c_beta is None:
+            return False
+
+        if c_gamma is not None:
+            bond_bg = mol.GetBondBetweenAtoms(c_beta, c_gamma)
+            if bond_bg and bond_bg.GetBondType() == Chem.BondType.DOUBLE:
+                print(f"Found double bond between Cβ (index {c_beta}) and Cγ (index {c_gamma}).")
+                return True
+        
+        print(f"No double bond found between Cβ-Cγ.")
+        return False
 
     # Reaction SMARTS implementation for activation (acyl-CoA synthetase) TO MODIFY !!!
     def activate_fatty_acid(self):
@@ -389,7 +494,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
     # Example of one beta-oxidation cycle with reaction SMARTS
     def beta_oxidation_cycle(self, acyl_coa_mol):
         """
-        Perform one complete beta-oxidation cycle:
+        Perform one complete beta-oxidation cycle with cis/trans handling:
 
         1. Dehydrogenation, 
             Formation of a double bond between C_alpha and C_beta. 
@@ -414,13 +519,36 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             End result: Acetyl-CoA is released, and the fatty acid chain is shortened by two carbon atoms.
         """
     
+        # First check for and handle any problematic double bonds
+        acyl_coa_mol = self.handle_cis_double_bonds(acyl_coa_mol)
+        print("\n--- After Isomerization ---")
+        print("Molecule:", Chem.MolToSmiles(acyl_coa_mol))
+
+        # Define reaction steps
+        beta_reaction_steps = []
+
+
+        if self.has_beta_gamma_double_bond(acyl_coa_mol):
+
+            beta_reaction_steps.append(("Alternative Dehydrogenation", SMARTS_REACTIONS["alternative_dehydrogenation"], 2))
+            print("Alternative Dehydrogenation: Existing double bond between Cβ and Cγ")
+            self.reaction_steps.append("Alternative Dehydrogenation")
+            self.reaction_results.append(acyl_coa_mol)
+            self.reaction_descriptions.append("Alternative dehydrogenation due to existing double bond at Δ² or Δ³")
+        
+        elif not self.has_alpha_beta_double_bond(acyl_coa_mol):
+
+            beta_reaction_steps.append(("Dehydrogenation", SMARTS_REACTIONS["dehydrogenation"], 2))
+
+        else:
+            print("Double bond between Cα and Cβ, skipping Hydrogenation.")
+            
         # Define a list of the reaction steps using the SMARTS patterns
-        beta_reaction_steps = [
-            ("Dehydrogenation", SMARTS_REACTIONS["dehydrogenation"], 2),    # ATP yield for FADH2
+        beta_reaction_steps.extend([
             ("Hydration", SMARTS_REACTIONS["hydration"], 0),                # No ATP yield
             ("Oxidation", SMARTS_REACTIONS["oxidation"], 3),                # ATP yield for NADH
             ("Thiolysis", SMARTS_REACTIONS["thiolysis"], 0),                # No ATP yield
-        ]
+        ])
     
         # Store intermediate products and descriptions
         products = [acyl_coa_mol]  # Initialize with input molecule
@@ -492,9 +620,11 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         return products[-1]  # Return the final product of the cycle
     
     def run_complete_oxidation(self):
-        """Run the complete beta-oxidation process from start to finish."""
+        """
+        Run the complete beta-oxidation process from start to finish.
+        """
         prev_length = None
-    
+
         # Clear previous results
         self.reaction_steps = []
         self.reaction_results = []
@@ -505,10 +635,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         # Initial step: Activation
         current_mol = self.activate_fatty_acid()
-    
+        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
+
         # Transport step: Carnitine shuttle
         current_mol = self.carnitine_shuttle(current_mol)
-    
+        print(Chem.MolToSmiles(current_mol))  # Log the molecule state
+
         # Collect products
         acetyl_coa_count = 0
         propionyl_coa = None
@@ -516,12 +648,10 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         while True:
             chain_length = self._get_carbon_chain_length(current_mol)
-            
-            # Debug output
             print(f"Cycle {cycle}: Chain length = {chain_length}")
-        
+
             if chain_length == prev_length:
-                print("Chain length not decreasing - breaking to avoid infinite loop.")
+                print("Chain length not decreasing — breaking to avoid infinite loop.")
                 break
 
             prev_length = chain_length
@@ -529,12 +659,14 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             # Handle final steps
             if chain_length == 2:
                 # Final acetyl-CoA
-                self.reaction_cycles.append("Final step: 2-carbon fragment to acetyl-CoA")
+                self.reaction_cycles.append(f"Final step: 2-carbon fragment to acetyl-CoA")
+                self.reaction_descriptions.append("Last 2-carbon unit converted to acetyl-CoA")
                 acetyl_coa_count += 1
                 break
             elif chain_length == 3:
                 # Final step for odd-chain: propionyl-CoA
-                self.reaction_cycles.append("Final step: 3-carbon fragment to propionyl-CoA")
+                self.reaction_cycles.append(f"Final step: 3-carbon fragment to propionyl-CoA")
+                self.reaction_descriptions.append("Last 3-carbon unit converted to propionyl-CoA")
                 propionyl_coa = current_mol
                 break
             elif chain_length < 2:
@@ -544,12 +676,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             # Run a regular beta-oxidation cycle
             cycle += 1
             self.reaction_cycles.append(f"Cycle {cycle}")
+            self.reaction_descriptions.append(f"Starting beta-oxidation cycle {cycle}")
             current_mol = self.beta_oxidation_cycle(current_mol)
             acetyl_coa_count += 1
 
         # Final energy calculation
-        atp_calculation = self.calculate_atp_yield()
-        self.atp_yield = atp_calculation['total_ATP']
+        self.atp_yield += self.calculate_atp_yield()['total_ATP']
 
         return {
             'final_products': {
@@ -559,9 +691,9 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             'reaction_steps': self.reaction_steps,
             'reaction_results': self.reaction_results,
             'reaction_descriptions': self.reaction_descriptions,
-            'total_atp_yield': self.atp_yield,
-            'atp_breakdown': atp_calculation['breakdown']  # Added ATP breakdown
+            'total_atp_yield': self.atp_yield
         }
+
     
     def prepare_data_for_visualization(self):
         """Prepare a detailed, modular data structure for visualization."""
@@ -578,7 +710,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
                 formula = "Invalid"
                 smiles = "Invalid"
 
-            steps.append({
+            steps.append({ # Appending dictionaries for each step!
                 "index": int(idx),
                 "step_number": idx + 1,
                 "name": step,
@@ -586,6 +718,12 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
                 "smiles": smiles,
                 "formula": formula,
             })
+
+            # steps = [] → A list of dictionaries.
+
+            # steps[0] → The first step’s dictionary.
+
+            # steps[0]["name"] → The name of that first step, like "dehydrogenation"
 
         return {
             "metadata": {
@@ -596,6 +734,8 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             "steps": steps,
             "cycles": self.cycle_log,  # <- added raw cycle log directly
         }
+    
+
     def visualize_reaction_sequence(self):
         """Visualize the β-oxidation reaction steps."""
         steps = []  # List to hold molecule images for each step
@@ -621,7 +761,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
             # Store step data for visualization
             steps.append({
-                "step_number": idx + 1,
+                "step_number": idx + 1, 
                 "step_name": step,
                 "description": description,
                 "molecule_image": mol_image
@@ -636,7 +776,3 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         plt.tight_layout()
         plt.show()
-
-
-
-    
