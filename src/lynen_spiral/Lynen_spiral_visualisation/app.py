@@ -15,7 +15,7 @@ st.title("Fatty Acid Metabolism Visualizer")
 FATTY_ACIDS = {
     "Palmitic acid (16:0)": "CCCCCCCCCCCCCCCC(=O)O",
     "Heptadecanoic acid (17:0)": "CCCCCCCCCCCCCCCCC(=O)O",
-    "15-Pentadecenoic acid (C15:1(10))": "CCCCCCCC=CCCCCC(=O)O",
+    "15-Pentadecenoic acid (C15:1(10))": "CCCCCCCCCCC=CCCC(=O)O",
     "Stearic acid (18:0)": "CCCCCCCCCCCCCCCCCC(=O)O",
     "Oleic acid (18:1(9))": "CCCCCCCC=CCCCCCCCC(=O)O",  # Δ9
     "Linoleic acid (18:2(9,12))": "CCCCCC=CCC=CCCCCCCC(=O)O",  # Δ9,12
