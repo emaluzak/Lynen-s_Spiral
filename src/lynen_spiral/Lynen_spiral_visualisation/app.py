@@ -17,10 +17,10 @@ FATTY_ACIDS = {
     "Heptadecanoic acid (17:0)": "CCCCCCCCCCCCCCCCC(=O)O",
     "15-Pentadecenoic acid (C15:1(10))": "CCCCCCCCCCC=CCCC(=O)O",
     "Stearic acid (18:0)": "CCCCCCCCCCCCCCCCCC(=O)O",
-    "Oleic acid (18:1(9))": "CCCCCCCC=CCCCCCCCC(=O)O",  # Δ9
-    "Linoleic acid (18:2(9,12))": "CCCCCC=CCC=CCCCCCCC(=O)O",  # Δ9,12
-    "α-Linolenic acid (18:3(9,12,15))": "CCC=CCC=CCC=CCCCCCCC(=O)O",  # Δ9,12,15
-    "Arachidonic acid (20:4(5,8,11,14))": "CCCC=CCC=CCC=CCC=CCCCCC(=O)O"  # Δ5,8,11,14
+    "Oleic acid (18:1(9))": "CCCCCCCC\C=C/CCCCCCCC(O)=O",  # Δ9
+    "Linoleic acid (18:2(9,12))": "CCCCC/C=C\C/C=C\CCCCCCCC(=O)O",  # Δ9,12
+    "α-Linolenic acid (18:3(9,12,15))": "CC/C=C\C/C=C\C/C=C\CCCCCCCC(=O)O",  # Δ9,12,15
+    "Arachidonic acid (20:4(5,8,11,14))": "CCCCC/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)O"  # Δ5,8,11,14
 }
 
 # Fatty acid selection
