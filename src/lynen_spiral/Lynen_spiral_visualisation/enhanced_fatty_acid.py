@@ -530,7 +530,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
 
         if self.has_beta_gamma_double_bond(acyl_coa_mol):
 
-            beta_reaction_steps.append(("Alternative Dehydrogenation", SMARTS_REACTIONS["alternative_dehydrogenation"], 2))
+            beta_reaction_steps.append(("Alternative Dehydrogenation", SMARTS_REACTIONS["alternative_dehydrogenation"], 1.5))
             print("Alternative Dehydrogenation: Existing double bond between Cβ and Cγ")
             self.reaction_steps.append("Alternative Dehydrogenation")
             self.reaction_results.append(acyl_coa_mol)
@@ -538,7 +538,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         
         elif not self.has_alpha_beta_double_bond(acyl_coa_mol):
 
-            beta_reaction_steps.append(("Dehydrogenation", SMARTS_REACTIONS["dehydrogenation"], 2))
+            beta_reaction_steps.append(("Dehydrogenation", SMARTS_REACTIONS["dehydrogenation"], 1.5)) # ATP yield for FADH2
 
         else:
             print("Double bond between Cα and Cβ, skipping Hydrogenation.")
@@ -546,7 +546,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
         # Define a list of the reaction steps using the SMARTS patterns
         beta_reaction_steps.extend([
             ("Hydration", SMARTS_REACTIONS["hydration"], 0),                # No ATP yield
-            ("Oxidation", SMARTS_REACTIONS["oxidation"], 3),                # ATP yield for NADH
+            ("Oxidation", SMARTS_REACTIONS["oxidation"], 2.5),                # ATP yield for NADH
             ("Thiolysis", SMARTS_REACTIONS["thiolysis"], 0),                # No ATP yield
         ])
     
