@@ -111,12 +111,12 @@ class FattyAcidMetabolism:
         propionyl_coa_atp = 0
         if is_odd_chain:
             # Propionyl-CoA metabolism yields additional ATP
-            propionyl_coa_atp = 13  # Simplified value
+            propionyl_coa_atp = 15  # Simplified value
 
         # Calculate totals
         total_fadh2 = cycles * fadh2_per_cycle
         total_nadh = (cycles * nadh_per_cycle) + extra_nadh
-        total_acetyl_coa = cycles * acetyl_coa_per_cycle
+        total_acetyl_coa = cycles * acetyl_coa_per_cycle + 1
 
         if is_odd_chain:
             total_acetyl_coa -= 1  # Last fragment is propionyl-CoA instead

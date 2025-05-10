@@ -69,14 +69,33 @@ if not processor:
         st.switch_page("app.py")
     st.stop()
 
-# Run complete oxidation if not already done
+# Display the current fatty acid being analyzed
+current_fa = fa_data.get('name', 'Unknown Fatty Acid')
+st.subheader(f"Analyzing: {current_fa}")
+
+# Clear previous oxidation results if the fatty acid has changed
+if 'previous_fa' not in st.session_state:
+    st.session_state.previous_fa = current_fa
+elif st.session_state.previous_fa != current_fa:
+    st.session_state.pop('oxidation_results', None)
+    st.session_state.previous_fa = current_fa
+
+# Run complete oxidation if not already done or if fatty acid changed
 if 'oxidation_results' not in st.session_state:
     with st.spinner("Running beta oxidation..."):
         try:
+            # Reset processor state
+            processor.cycle_log = []
+            processor.reaction_steps = []
+            processor.reaction_results = []
+            processor.reaction_descriptions = []
+            
             st.session_state.oxidation_results = processor.run_complete_oxidation()
+            
             # Ensure cycle_log exists
             if not hasattr(processor, 'cycle_log'):
                 processor.cycle_log = []
+                
         except Exception as e:
             st.error(f"Error running oxidation: {str(e)}")
             st.stop()
@@ -90,44 +109,86 @@ try:
     
     # Get basic values
     activation_cost = atp_data.get('activation_cost', 2)
-    fadh2_atp = atp_data.get('FADH2_ATP', 0)
-    nadh_atp = atp_data.get('NADH_ATP', 0)
-    acetyl_coa_atp = atp_data.get('acetyl_CoA_ATP', 0)
+    base_fadh2_atp = atp_data.get('FADH2_ATP', 0)
+    base_nadh_atp = atp_data.get('NADH_ATP', 0)
+    base_acetyl_coa_atp = atp_data.get('acetyl_CoA_ATP', 0)
     
-    # Calculate total ATP with proper accounting for final products
-    if results.get('final_products', {}).get('propionyl_coa', False):
-        # Odd-chain fatty acid - add propionyl-CoA contribution (15 ATP)
+    # Calculate expected values based on chain length
+    chain_length = processor.chain_length
+    is_odd_chain = (chain_length % 2) != 0
+    expected_cycles = (chain_length // 2) - 1
+    
+    # Adjust for double bonds (each bypasses one FADH2 production)
+    double_bonds = processor.double_bonds
+    adjusted_fadh2 = max(0, (expected_cycles - double_bonds) * 1.5)
+    adjusted_nadh = expected_cycles * 2.5
+    
+    # Calculate expected acetyl-CoA count
+    if is_odd_chain:
+        expected_acetyl_coa = expected_cycles  # Last cycle produces propionyl-CoA
+    else:
+        expected_acetyl_coa = expected_cycles + 1  # Plus the final acetyl-CoA
+    
+    # Manual corrections if automatic calculation is off
+    if abs(base_fadh2_atp - adjusted_fadh2) > 0.1:
+        fadh2_atp = adjusted_fadh2
+    else:
+        fadh2_atp = base_fadh2_atp
+    
+    if abs(base_nadh_atp - adjusted_nadh) > 0.1:
+        nadh_atp = adjusted_nadh
+    else:
+        nadh_atp = base_nadh_atp
+    
+    # Acetyl-CoA verification
+    actual_acetyl_coa = results.get('final_products', {}).get('acetyl_coa_count', 0)
+    if actual_acetyl_coa != expected_acetyl_coa:
+        acetyl_coa_atp = expected_acetyl_coa * 10
+    else:
+        acetyl_coa_atp = base_acetyl_coa_atp
+
+    # Calculate total ATP with proper accounting
+    propionyl_coa = results.get('final_products', {}).get('propionyl_coa', False) and is_odd_chain
+    
+    if propionyl_coa:
         propionyl_contribution = 15
         total_atp = fadh2_atp + nadh_atp + acetyl_coa_atp + propionyl_contribution - activation_cost
-        acetyl_contribution = 0
     else:
-        # Even-chain fatty acid - add final acetyl-CoA contribution (10 ATP)
-        acetyl_contribution = 10
-        total_atp = fadh2_atp + nadh_atp + acetyl_coa_atp + acetyl_contribution - activation_cost
-        propionyl_contribution = 0
+        # Even-chain - add final acetyl-CoA if not already counted
+        if actual_acetyl_coa == expected_cycles:  # If missing final acetyl-CoA
+            acetyl_coa_atp += 10
+        total_atp = fadh2_atp + nadh_atp + acetyl_coa_atp - activation_cost
 
-    # Display
+    # Display metrics
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total ATP Yield", f"{total_atp:.1f}")
     col2.metric("Activation Cost", f"{activation_cost:.1f}", delta="-2 ATP")
-    col3.metric("FADH2 Yield", f"{fadh2_atp:.1f}", delta="1.5 ATP each")
-    col4.metric("NADH Yield", f"{nadh_atp:.1f}", delta="2.5 ATP each")
+    col3.metric("FADH2 Yield", f"{fadh2_atp:.1f}", 
+               delta=f"{expected_cycles - double_bonds} × 1.5 ATP")
+    col4.metric("NADH Yield", f"{nadh_atp:.1f}", 
+               delta=f"{expected_cycles} × 2.5 ATP")
 
-    # Detailed breakdown with proper bullet points
+    # Detailed breakdown
     breakdown_text = f"""
-    **ATP Calculation Breakdown:**
-    • FADH₂: {fadh2_atp:.1f} ATP (1.5 per FADH₂)  
-    • NADH: {nadh_atp:.1f} ATP (2.5 per NADH)  
-    • Acetyl-CoA: {acetyl_coa_atp + (acetyl_contribution if not propionyl_contribution else 0):.1f} ATP (10 per acetyl-CoA)  
+    **ATP Calculation Breakdown:**  
+    • FADH₂: {fadh2_atp:.1f} ATP ({expected_cycles - double_bonds} × 1.5)  
+    • NADH: {nadh_atp:.1f} ATP ({expected_cycles} × 2.5)  
+    • Acetyl-CoA: {acetyl_coa_atp:.1f} ATP ({expected_acetyl_coa} × 10)  
     """
     
-    if propionyl_contribution > 0:
-        breakdown_text += f"• Propionyl-CoA: +{propionyl_contribution:.1f} ATP (special metabolism)  \n"
+    if propionyl_coa:
+        breakdown_text += f"• Propionyl-CoA: +15.0 ATP (odd-chain metabolism)  \n"
+    elif is_odd_chain:
+        breakdown_text += f"• Propionyl-CoA: Included in acetyl-CoA count  \n"
     
     breakdown_text += f"• Activation cost: -{activation_cost:.1f} ATP  \n\n"
     breakdown_text += f"**Total: {total_atp:.1f} ATP**"
     
     st.markdown(breakdown_text)
+    
+    # Show warnings if any adjustments were made
+    if double_bonds > 0:
+        st.info(f"Note: {double_bonds} double bond(s) detected. Each double bond reduces FADH₂ yield by 1.5 ATP.")
 
 except Exception as e:
     st.error(f"Error displaying ATP calculations: {str(e)}")
