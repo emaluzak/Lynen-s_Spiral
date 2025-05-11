@@ -1,8 +1,11 @@
 import streamlit as st
-from rdkit import Chem
-from rdkit.Chem import Draw
+import io
 import sys
 import os
+from rdkit import Chem
+from rdkit.Chem import Draw, AllChem
+from rdkit.Chem.Draw import rdMolDraw2D
+from PIL import Image
 
 st.set_page_config(layout="wide")
 st.title("2D Cycle Representation")
@@ -10,22 +13,62 @@ st.title("2D Cycle Representation")
 sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
+def draw_mol_with_coa(smiles):
+    """
+    Generates a 2D depiction of a molecule from a SMILES string.
+    Replaces the terminal sulfur at the end of the fatty acid by a "S-CoA" label.
+    The CoA label was omitted in the original code, as it was unrecognized by RDKit and lead to errors.
+    It is now added as a label to the sulfur atom in the 2D rendering to better simulate the beta-oxidation process.
+
+    Arguments:
+        smiles (str): The SMILES string representing the molecule.
+
+    Returns:
+        PIL.Image.Image: An image of the rendered molecule, or None if the SMILES string is invalid.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+
+    # Generate 2D coordinates
+    AllChem.Compute2DCoords(mol)
+
+    # Create the drawer and options
+    drawer = rdMolDraw2D.MolDraw2DCairo(300, 300)
+    opts = drawer.drawOptions()
+
+    # Set global atom label color to black
+    opts.atomLabelColour = (0, 0, 0)  # Black text
+
+    # Customize sulfur color to yellow
+    opts.elemDict = {'S': (1.0, 1.0, 0.0)}  # Yellow sulfur
+
+    # Modify the atom labels
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() == "S" and atom.GetDegree() == 1:
+            # Set the label for sulfur to include "S-CoA"
+            atom.SetProp("atomLabel", "S-CoA")
+
+    # Draw the molecule
+    drawer.DrawMolecule(mol)
+    drawer.FinishDrawing()
+
+    # Convert the drawing to an image
+    return Image.open(io.BytesIO(drawer.GetDrawingText()))
+
 def _display_cycle_steps(cycle):
     """Helper function to display steps of a single cycle."""
     for step in cycle['steps']:
         col1, col2 = st.columns([1, 3])
-        
+
         with col1:
-            # Display reactant and product structures
-            reactant = Chem.MolFromSmiles(step['input'])
-            product = Chem.MolFromSmiles(step['output'])
-            
+
             st.markdown("**Reactant**")
-            st.image(Draw.MolToImage(reactant), use_container_width=True)
-            
+            st.image(draw_mol_with_coa(step['input']), use_container_width=True)
+
             st.markdown("**Product**")
-            st.image(Draw.MolToImage(product), use_container_width=True)
-            
+            st.image(draw_mol_with_coa(step['output']), use_container_width=True)
+
         with col2:
             # Display step information
             st.markdown(f"**{step['step']}**")

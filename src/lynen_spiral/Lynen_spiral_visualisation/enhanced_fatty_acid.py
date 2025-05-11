@@ -370,7 +370,7 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             # activation_rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[O:3][H] >> [C:1](=[O:2])[S:4][CoA]")
 
             # With a simpler version:
-            activation_rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[O:3] >> [C:1](=[O:2])[S:3]C")
+            activation_rxn = AllChem.ReactionFromSmarts("[C:1](=[O:2])[O:3] >> [C:1](=[O:2])[S:3]")
 
 
             if not activation_rxn:

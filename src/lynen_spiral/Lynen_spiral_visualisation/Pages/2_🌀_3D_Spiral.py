@@ -188,7 +188,14 @@ with col2:
     )
     
     step_smiles = cycle_data["steps"][step_to_show]["output"]
-    mol_img = Draw.MolToImage(Chem.MolFromSmiles(step_smiles), size=(300, 300))
+    # Adding the CoA group to the SMILES string for visualization 
+    # (Workaround to visialize CoA group in the molecule without getting an error from RDKit))
+    step_smiles = step_smiles + "*"
+    step_mol = Chem.MolFromSmiles(step_smiles)
+    for atom in step_mol.GetAtoms():
+        if atom.GetSymbol() == "*":
+            atom.SetProp("atomLabel", "CoA")
+    mol_img = Draw.MolToImage(step_mol, size=(300, 300))
     st.image(mol_img, caption=f"Step {step_to_show+1} Structure")
 
 # --- Navigation ---
