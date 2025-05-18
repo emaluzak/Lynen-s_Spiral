@@ -18,17 +18,26 @@ if 'fa_data' not in st.session_state:
 
 # --- Load Data ---
 fa_data = st.session_state['fa_data']
-mol = fa_data['molecule']
+
+smiles = fa_data.get('smiles')
+if not smiles:
+    st.error("No SMILES string found in session. Please restart.")
+    st.stop()
+
+mol = Chem.MolFromSmiles(smiles)
+if mol is None:
+    st.error("Invalid SMILES string stored. Please restart.")
+    st.stop()
 
 # --- Run β-Oxidation ---
 @st.cache_data
-def run_beta_oxidation(_mol):
-    metabolism = EnhancedFattyAcidMetabolism(Chem.MolToSmiles(_mol))
+def run_beta_oxidation(smiles):
+    metabolism = EnhancedFattyAcidMetabolism(Chem.MolToSmiles(mol))
     metabolism.run_complete_oxidation()
     return metabolism.prepare_data_for_visualization()
 
 with st.spinner("Simulating β-oxidation cycles..."):
-    viz_data = run_beta_oxidation(mol)
+    viz_data = run_beta_oxidation(smiles)
     cycles = viz_data["cycles"]
     total_cycles = len(cycles)
 

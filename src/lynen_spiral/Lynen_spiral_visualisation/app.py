@@ -333,7 +333,6 @@ if st.button("Visualize Fatty Acid"):
             st.session_state['fa_data'] = {
                 'smiles': smiles,
                 'notation': notation,
-                'molecule': mol,
                 'processor': fa_metabolism,
                 'name': selected_fa if option == "Choose from library" else f"Custom {notation}"
             }
