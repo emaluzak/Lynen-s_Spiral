@@ -338,18 +338,11 @@ if st.button("Visualize Fatty Acid"):
             }
 
             # Update session state for the next step (this controls page navigation)
-            st.session_state['page'] = '2_🌀_3D_Spiral'
-
-            # Display a button for going to the 3D Spiral page
-            st.button("Proceed to Detailed 3D Spiral Visualization", on_click=lambda: switch_page("2_🌀_3D_Spiral"))
+            #st.session_state['page'] = '2_🌀_3D_Spiral'
 
         except Exception as e:
             st.error(f"Visualization error: {e}")
     else:
         st.warning("⚠️ Please select or generate a valid fatty acid structure before visualizing.")
 
-# Page switcher function using session state
-def switch_page(page_name: str):
-    st.session_state['page'] = page_name
-    st.rerun()  # Force rerun to switch content
 
