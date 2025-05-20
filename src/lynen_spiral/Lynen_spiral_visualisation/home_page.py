@@ -1,9 +1,28 @@
 import streamlit as st
+from pathlib import Path
 
 def show_home_page():
     """Displays the welcome/home page content"""
     st.title("**Welcome to the Fatty Acid Metabolism Visualizer**")
     st.markdown("---")
+
+    # Get the directory where this script is located
+    script_dir = Path(__file__).parent
+    
+    # Define image paths (relative to script location)
+    image_paths = {
+        'coa': script_dir / "coa.jpg",
+        'fad': script_dir / "FAD.jpg",
+        'nadh': script_dir / "NADH.jpg",
+        'atp': script_dir / "atp.jpg"
+    }
+    
+    # Verify images exist
+    missing_images = [name for name, path in image_paths.items() if not path.exists()]
+    if missing_images:
+        st.error(f"Missing image files: {', '.join(missing_images)}")
+        st.info(f"Expected images in: {script_dir}")
+        return False
 
     col1, col2 = st.columns([1, 1])
 
@@ -15,8 +34,6 @@ def show_home_page():
         - A **long chain** of carbon (C) and hydrogen (H) atoms — this is the "tail."
         - A special end called a **carboxyl group (COOH)** — this is the "acid head."
         """)
-
-
     with col2:
         st.header(" Why Are Fatty Acids Important?")
         st.markdown("""
@@ -50,30 +67,25 @@ def show_home_page():
         Breaking down a 16-carbon fatty acid like palmitate yields over **100 ATP**!
 
         """)
-        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\coa.jpeg", caption="Acetyl-CoA Molecule", use_container_width=True)
-        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\FAD.jpg", caption="FAD Molecule", use_container_width = True)
+        st.image(str(image_paths['coa']), caption="Acetyl-CoA Molecule", use_container_width=True)
+        st.image(str(image_paths['fad']), caption="FAD Molecule", use_container_width=True)
 
     with col4:
         st.header(" What Are NADH and FADH₂?")
         st.markdown("""
         **NADH** (*Nicotinamide Adenine Dinucleotide*) and **FADH₂** (*Flavin Adenine Dinucleotide*) are molecules that **carry high-energy electrons**.
 
-        We can think of them as **rechargeable batteries** :
+        We can think of them as **rechargeable batteries**:
 
         - They collect energy from β-oxidation, glycolysis, and the Krebs cycle.
         - Then they **deliver electrons** to the **Electron Transport Chain (ETC)** in the mitochondria.
         - The ETC uses these electrons to generate **ATP**, the main energy currency of your body.
 
         **Energy yield:**
-
         - NADH → ~2.5 ATP
         - FADH₂ → ~1.5 ATP
-
-        Without them:
-        - Cells couldn't efficiently generate ATP.
-        - Vital functions like movement, thinking, and healing would slow down.
         """)
-        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\NADH.jpg", caption="NADH Molecule", use_container_width=True)
+        st.image(str(image_paths['nadh']), caption="NADH Molecule", use_container_width=True)
     
 
     st.markdown("---")
@@ -88,4 +100,6 @@ def show_home_page():
     All rely on **ATP**, which is made using the energy stored in NADH and FADH₂.
 
     """)
-    st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\atp.jpg", caption="ATP Molecule", use_container_width=True)
+    st.image(str(image_paths['atp']), caption="ATP Molecule", use_container_width=True)
+    
+    return True
