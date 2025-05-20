@@ -505,55 +505,37 @@ class EnhancedFattyAcidMetabolism(FattyAcidMetabolism):
             reaction = AllChem.ReactionFromSmarts(reaction_smarts)
             if not reaction:
                 raise ValueError(f"Invalid SMARTS reaction pattern: {reaction_smarts}")
-            
+        
             # Run the reaction
             products = reaction.RunReactants((molecule,))
-
             if not products or len(products) == 0:
                 print(f"Warning: Reaction produced no products. Reaction SMARTS: {reaction_smarts}")
-                return None  # Or handle appropriately
+                return None
 
-            if len(products) > 0 and len(products[0]) > 0:
-                # Check if the reaction produced more than one product
-                if len(products) > 1:
-                    product_1 = products[0][0]  # First product (acetyl-CoA)
-                    product_2 = products[0][1]  # Second product (shortened-CoA)
+            # Get the first product set (tuple of molecules)
+            first_set = products[0]
+            if len(first_set) == 0:
+                print("Reaction returned an empty product set.")
+                return None
 
-                    try:
-                        Chem.SanitizeMol(product_1)
-                        molecule.UpdatePropertyCache(strict=False) # Sanitize before the reaction
-                
-                    except Exception as e:
-                        print(f"Error sanitizing molecule before reaction: {e}")
-                        return None  # Or handle appropriately
-            
-                    return product_1
-                
-                else:
-                    molecule = products[0][0] # Access the first molecule of the first product set
-                    
-                try:
-                    Chem.SanitizeMol(molecule)
-                    molecule.UpdatePropertyCache(strict=False) # Sanitize before the reaction
-                
-                except Exception as e:
-                    print(f"Error sanitizing molecule before reaction: {e}")
-                    return None  # Or handle appropriately
-                    
-                return molecule
-            
-            else:
-                print(f"No products generated. Reaction SMARTS: {reaction_smarts}")
-                return None 
+            # Take the first molecule from the first product set
+            product = first_set[0]
+            try:
+                Chem.SanitizeMol(product)
+                product.UpdatePropertyCache(strict=False)
+            except Exception as e:
+                print(f"Sanitization failed: {e}")
+                return None
+
+            return product
 
         except Exception as e:
-            # provide detailked error information
-            raise RuntimeError(f"Failed to run reaction. Error: {str(e)}\n"
-                               f"Reaction SMARTS: {reaction_smarts}\n"
-                               f"Molecule: {Chem.MolToSmiles(molecule, canonical=True)}")
+            raise RuntimeError(
+                f"Failed to run reaction. Error: {str(e)}\n"
+                f"Reaction SMARTS: {reaction_smarts}\n"
+                f"Molecule: {Chem.MolToSmiles(molecule, canonical=True)}"
+            )
     
-
-    # Example of one beta-oxidation cycle with reaction SMARTS
     def beta_oxidation_cycle(self, acyl_coa_mol):
 
         """
