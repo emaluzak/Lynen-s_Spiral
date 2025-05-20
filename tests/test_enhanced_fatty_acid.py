@@ -4,8 +4,9 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(r"src\lynen_spiral\Lynen_spiral_visualisation"))
-
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
+
+# Type "pytest tests\test_enhanced_fatty_acid.py -v" to run tests with detailed output
 
 # A set of fatty acids and edge cases
 TEST_MOLECULES = {
