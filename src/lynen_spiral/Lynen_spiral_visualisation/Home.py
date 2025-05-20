@@ -17,67 +17,148 @@ if 'fa_data' not in st.session_state:
     st.session_state.fa_data = {}
 
 def mol_to_svg_image(mol, width=600, height=300):
+        
+    """
+    Generate an SVG image of a molecule using RDKit's 2D drawing tools.
+    Higher resolution and larger size for better visualization compared 
+    to RDKit's MolToImage function.
+
+    Parameters:
+        mol (rdkit.Chem.Mol): The RDKit molecule object to be drawn.
+        width (int, optional): Width of the SVG image in pixels. Defaults to 600.
+        height (int, optional): Height of the SVG image in pixels. Defaults to 300.
+
+    Returns:
+        str: An SVG string representation of the molecule, with cleaned XML tags
+             for compatibility with Streamlit rendering.
+    """
+
     drawer = Draw.MolDraw2DSVG(width, height)
     drawer.drawOptions().bondLineWidth = 2.0
     drawer.drawOptions().atomLabelFontSize = 18
     drawer.DrawMolecule(mol)
     drawer.FinishDrawing()
-    svg = drawer.GetDrawingText().replace("svg:", "")
+    svg = drawer.GetDrawingText().replace("svg:", "")  # Streamlit needs clean XML
     return svg
 
 def smiles_to_delta(smiles):
+
     """
-    Convert a SMILES string to its delta nomenclature.
+    Convert a SMILES string representing a fatty acid into IUPAC-style delta 
+    notation indicating carbon count, number of double bonds, and their positions 
+    (with optional stereochemistry).
+
+    The function assumes the input is a linear carboxylic acid and identifies:
+      - The number of carbon atoms in the chain (starting from the carboxylic acid carbon),
+      - The number and positions of C=C double bonds,
+      - Cis/trans (Z/E) configuration if specified in the SMILES.
+
+    Parameters:
+        smiles (str): A valid SMILES string representing a fatty acid molecule.
+
+    Returns:
+        str: A delta notation string in the format:
+             "X:Y(Δn1,Δn2,...)" or
+             "X:Y(cis-Δn1,trans-Δn2,...)" if stereochemistry is available,
+             where:
+                 X = total number of carbons
+                 Y = number of double bonds
+                 Δn = position of each double bond from the carboxylic end
+
+    Raises:
+        ValueError: If the SMILES string is invalid or no carboxylic acid carbon is found.
     """
+
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         raise ValueError("Invalid SMILES string")
 
-    # Count the number of carbon atoms
-    num_carbons = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == 'C')
+    # Find the carboxylic acid carbon (C double bonded to O and single bonded to OH)
+    carboxylic_c = None
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() != 'C':
+            continue
+        neighbors = atom.GetNeighbors()
+        oxygens = [n for n in neighbors if n.GetSymbol() == 'O']
+        if len(oxygens) >= 2:
+            carboxylic_c = atom
+            break
 
-    # Extract all double bonds in the molecule
+    if carboxylic_c is None:
+        raise ValueError("No carboxylic acid carbon found")
+
+    # Traverse from the carboxylic acid carbon, labeling carbon positions
+    from collections import deque
+
+    carbon_positions = {}
+    visited = set()
+    queue = deque([(carboxylic_c, 1)])  # (atom, carbon_number)
+
+    while queue:
+        atom, pos = queue.popleft()
+        if atom.GetIdx() in visited or atom.GetSymbol() != 'C':
+            continue
+        visited.add(atom.GetIdx())
+        carbon_positions[atom.GetIdx()] = pos
+        for neighbor in atom.GetNeighbors():
+            if neighbor.GetSymbol() == 'C' and neighbor.GetIdx() not in visited:
+                queue.append((neighbor, pos + 1))
+
+    num_carbons = len(carbon_positions)
+
+    # Extract and interpret double bonds
     double_bonds = []
-    num_double_bonds = 0
     for bond in mol.GetBonds():
         if bond.GetBondType() == Chem.BondType.DOUBLE:
-            # Get the atoms involved in the bond (start and end)
-            begin_atom = bond.GetBeginAtom()
-            end_atom = bond.GetEndAtom()
-            
-            # Only consider bonds between carbon atoms (fatty acids)
-            if begin_atom.GetSymbol() == 'C' and end_atom.GetSymbol() == 'C':
-                num_double_bonds += 1
-                double_bonds.append(bond)
+            a1 = bond.GetBeginAtom()
+            a2 = bond.GetEndAtom()
+            if a1.GetSymbol() == 'C' and a2.GetSymbol() == 'C':
+                idx1 = a1.GetIdx()
+                idx2 = a2.GetIdx()
+                if idx1 in carbon_positions and idx2 in carbon_positions:
+                    pos = min(carbon_positions[idx1], carbon_positions[idx2])
+                    stereo = bond.GetStereo()
+                    if stereo == Chem.BondStereo.STEREOZ:
+                        conf = "cis"
+                    elif stereo == Chem.BondStereo.STEREOE:
+                        conf = "trans"
+                    else:
+                        conf = ""
+                    double_bonds.append((pos, conf))
 
-    # Sort double bonds by the position of the first atom in the bond
-    double_bonds = sorted(double_bonds, key=lambda x: min(x.GetBeginAtomIdx(), x.GetEndAtomIdx()))
+    # Sort and format delta notation
+    double_bonds.sort()
+    delta_parts = [f"Δ{pos}" for pos, _ in double_bonds]
+    conf_parts = [conf for _, conf in double_bonds if conf]
 
-    # Generate delta nomenclature
-    delta_notation = []
-    configuration = []
-    for bond in double_bonds:
-        start = bond.GetBeginAtomIdx()
-        # The position of the double bond is the index of the start atom + 1 (1-based)
-        position = start + 1
-        # Append the delta notation for each double bond
-        delta_notation.append(f"Δ{position}")
-
-        stereo = bond.GetStereo()
-        if stereo == Chem.BondStereo.STEREOZ:
-            conf = "cis"
-        elif stereo == Chem.BondStereo.STEREOE:
-            conf = "trans"
+    notation = f"{num_carbons}:{len(double_bonds)}"
+    if double_bonds:
+        if conf_parts:
+            notation += f"({','.join(conf_parts)}-{','.join(delta_parts)})"
         else:
-            conf = ""
-        configuration.append(conf)
-    
+            notation += f"({','.join(delta_parts)})"
 
-    # Return the delta nomenclature as a string
-    return f"{num_carbons}:{num_double_bonds}" + ("(" + ",".join(configuration) + "-" if configuration else "") + (",".join(delta_notation) + ")" if delta_notation else "")
-
+    return notation
 
 def display_2d_structure(mol=None, smiles=None):
+
+    """
+    Display a 2D structure and key molecular information for a given molecule.
+
+    This function renders a 2D SVG image of the molecule and displays relevant molecular 
+    metadata such as the molecular formula, SMILES notation, and delta nomenclature.
+
+    Parameters:
+        mol (rdkit.Chem.Mol): The RDKit molecule object to display.
+        smiles (str): The SMILES string corresponding to the molecule.
+
+    Displays:
+        - A 2D SVG rendering of the molecule (via mol_to_svg_image)
+        - Canonical SMILES string
+        - Molecular formula
+        - Delta nomenclature string (via smiles_to_delta)
+    """
+
     mol = mol or st.session_state.fa_data.get("mol")
     smiles = smiles or st.session_state.fa_data.get("smiles")
     if mol is None:
@@ -98,6 +179,22 @@ def display_2d_structure(mol=None, smiles=None):
         st.code(smiles_to_delta(smiles))
 
 def display_3d_structure(mol=None):
+
+    """
+    Render a 3D interactive visualization of a molecule using Plotly and RDKit.
+
+    This function performs 3D geometry embedding, molecular mechanics optimization,
+    and renders atoms and bonds in an interactive Plotly 3D scatter plot. Different
+    atom types are color-coded and bond types are styled (single, double, triple, aromatic).
+
+    Parameters:
+        mol (rdkit.Chem.Mol): The input RDKit molecule object to be visualized.
+
+    Displays:
+        - A 3D structure of the molecule with atoms shown as colored spheres.
+        - Bonds styled according to bond type using custom styles.
+    """
+
     mol = mol or st.session_state.fa_data.get("mol")
     if mol is None:
         st.error("\u274c No molecule data found.")
@@ -158,16 +255,48 @@ def display_3d_structure(mol=None):
     st.plotly_chart(fig, use_container_width=True)
 
 def main_page():
+
+    """
+    Render the main interface for the Fatty Acid Explorer web application.
+
+    This function provides two core functionalities for users:
+    1. Selection of predefined fatty acids from a library.
+    2. Construction of custom fatty acids by specifying chain length and double bond positions/configurations.
+
+    Features:
+    - Displays radio buttons to choose between predefined and custom fatty acids.
+    - Provides form controls for selecting fatty acid type, inputting double bond positions,
+      and configuring cis/trans stereochemistry for custom chains.
+    - Validates custom user input to ensure chemical plausibility.
+    - Converts input to SMILES representation for visualization.
+    - On successful submission, stores the molecular data in session state and navigates
+      to a 2D/3D visualizer tab.
+
+    Navigation:
+    - Uses a sidebar to switch between the Home and Visualizer views.
+    - The Visualizer tab renders the selected or custom molecule in both 2D and 3D formats.
+
+    Dependencies:
+    - streamlit for UI
+    - RDKit for SMILES parsing and visualization
+    - EnhancedFattyAcidMetabolism for further molecule processing
+
+    Raises:
+        ValueError: If the SMILES string for a custom fatty acid is invalid.
+    """
+ 
     st.title("Fatty Acid Explorer")
 
     # Fatty acid options (carboxyl carbon is C1)
     FATTY_ACIDS = {
-        "Palmitic acid (16:0)": "CCCCCCCCCCCCCCCC(=O)O",  # C1 is carboxyl
-        "Stearic acid (18:0)": "CCCCCCCCCCCCCCCCCC(=O)O",
-        "Oleic acid (18:1(9))": "CCCCCCCC/C=C\CCCCCCCC(=O)O",  # Δ9 is C9=C10
-        "Linoleic acid (18:2(9,12))": "CCCC/C=C\C/C=C\CCCCCCCC(=O)O",  # Δ9=C9=C10, Δ12=C12=C13
-        "α-Linolenic acid (18:3(9,12,15))": "CC/C=C\C/C=C\C/C=C\CCCCCCCC(=O)O",
-        "Arachidonic acid (20:4(5,8,11,14))": "CCCCC/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)O"
+    "Palmitic acid (16:0)": "CCCCCCCCCCCCCCCC(=O)O",
+    "Heptadecanoic acid (17:0)": "CCCCCCCCCCCCCCCCC(=O)O",
+    "15-Pentadecenoic acid (C15:1(10))": "CCCCCCCCCCC=CCCC(=O)O",
+    "Stearic acid (18:0)": "CCCCCCCCCCCCCCCCCC(=O)O",
+    "Oleic acid (18:1(9))": "CCCCCCCC\C=C/CCCCCCCC(O)=O",  # Δ9
+    "Linoleic acid (18:2(9,12))": "CCCCC/C=C\C/C=C\CCCCCCCC(=O)O",  # Δ9,12
+    "α-Linolenic acid (18:3(9,12,15))": "CC/C=C\C/C=C\C/C=C\CCCCCCCC(=O)O",  # Δ9,12,15
+    "Arachidonic acid (20:4(5,8,11,14))": "CCCCC/C=C\C/C=C\C/C=C\C/C=C\CCCC(=O)O"  # Δ5,8,11,14
     }
 
     option = st.radio("Select fatty acid source:", ("Choose from library", "Customize your own"))
@@ -184,6 +313,31 @@ def main_page():
 
         # Validate the input format and other constraints
         def validate_double_bond_input(input_str, num_carbons):
+
+            """
+            Validate user input specifying double bond positions in a fatty acid chain.
+
+            This function checks that the input string contains valid positions for double bonds,
+            adheres to chemical constraints, and returns any validation errors along with parsed positions.
+
+            Validation Rules:
+            - Input must only contain digits, commas, and spaces.
+            - No negative positions allowed.
+            - Positions must be within the valid carbon range (1 to num_carbons).
+            - Position 1 (carboxylic acid carbon) cannot have a double bond.
+            - Positions cannot be adjacent or duplicated.
+            - The last carbon position (terminal methyl group) cannot have a double bond.
+
+            Parameters:
+                input_str (str): Comma-separated string of double bond positions (e.g. "3, 5, 8").
+                num_carbons (int): Total number of carbons in the fatty acid chain.
+
+            Returns:
+                tuple:
+                    - invalid_reasons (list of str): List of error messages describing why input is invalid. Empty if valid.
+                    - double_bond_positions (list of int): Parsed and cleaned list of double bond positions from input.
+            """
+            
             invalid_reasons = []
     
             # Check if input contains anything but numbers, commas, or spaces
@@ -252,6 +406,7 @@ def main_page():
 
             # Build SMILES from positions and config
             def build_fatty_acid_smiles(length, double_bonds, config):
+
                 """
                 Build a SMILES string for a fatty acid based on the number of carbons, double bond positions, and configuration.
                 Cis: F/C=C\\F or F\\C=C/F       F's are on the same side of the double bond
@@ -261,13 +416,14 @@ def main_page():
                 previous double bonds.
 
                 Arguments:
-                length (int): Number of carbon atoms in the fatty acid chain.
-                double_bonds (list): List of positions for double bonds.
-                config (dict): Dictionary with double bond positions as keys and their configurations ("cis" or "trans")
+                    length (int): Number of carbon atoms in the fatty acid chain.
+                    double_bonds (list): List of positions for double bonds.
+                    config (dict): Dictionary with double bond positions as keys and their configurations ("cis" or "trans")
 
                 Returns:
-                str: SMILES representation of the fatty acid.
+                    str: SMILES representation of the fatty acid.
                 """
+
                 if length < 2:
                     raise ValueError("Chain must be at least 2 carbons long.")
     
