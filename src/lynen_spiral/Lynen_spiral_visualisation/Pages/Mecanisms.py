@@ -8,7 +8,7 @@ from rdkit.Chem.Draw import rdMolDraw2D
 from PIL import Image
 
 st.set_page_config(layout="wide")
-st.title("2D Cycle Representation")
+st.title("Mechanisms of each step of the beta-oxydation")
 
 sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
