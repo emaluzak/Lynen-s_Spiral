@@ -50,8 +50,8 @@ def show_home_page():
         Breaking down a 16-carbon fatty acid like palmitate yields over **100 ATP**!
 
         """)
-        st.image("/Users/schultheis/project_practical_programming/Lynen_spiral_visualisation_8/coa.jpeg", caption="Acetyl-CoA Molecule", use_container_width=True)
-        st.image("/Users/schultheis/project_practical_programming/Lynen_spiral_visualisation_8/FAD.jpg", caption="FAD Molecule", use_container_width = True)
+        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\coa.jpeg", caption="Acetyl-CoA Molecule", use_container_width=True)
+        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\FAD.jpg", caption="FAD Molecule", use_container_width = True)
 
     with col4:
         st.header(" What Are NADH and FADH₂?")
@@ -73,7 +73,7 @@ def show_home_page():
         - Cells couldn't efficiently generate ATP.
         - Vital functions like movement, thinking, and healing would slow down.
         """)
-        st.image("/Users/schultheis/project_practical_programming/Lynen_spiral_visualisation_8/NADH.jpg", caption="NADH Molecule", use_container_width=True)
+        st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\NADH.jpg", caption="NADH Molecule", use_container_width=True)
     
 
     st.markdown("---")
@@ -88,4 +88,4 @@ def show_home_page():
     All rely on **ATP**, which is made using the energy stored in NADH and FADH₂.
 
     """)
-    st.image("/Users/schultheis/project_practical_programming/Lynen_spiral_visualisation_8/atp.jpg", caption="ATP Molecule", use_container_width=True)
+    st.image(r"src\lynen_spiral\Lynen_spiral_visualisation\atp.jpg", caption="ATP Molecule", use_container_width=True)
