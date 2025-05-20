@@ -8,66 +8,91 @@ from rdkit.Chem.Draw import rdMolDraw2D
 from PIL import Image
 
 st.set_page_config(layout="wide")
-st.title("Mechanisms of each step of the beta-oxydation")
+st.title("Detailed Analysis")
 
 sys.path.append(os.path.abspath(r"C:\Users\Lenovo\git\Lynen-s_Spiral\src\lynen_spiral\Lynen_spiral_visualisation"))
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
-def draw_mol_with_coa(smiles):
-    """
-    Generates a 2D depiction of a molecule from a SMILES string.
-    Replaces the terminal sulfur at the end of the fatty acid by a "S-CoA" label.
-    The CoA label was omitted in the original code, as it was unrecognized by RDKit and lead to errors.
-    It is now added as a label to the sulfur atom in the 2D rendering to better simulate the beta-oxidation process.
+# ------------------ Useful Functions ------------------
 
-    Arguments:
-        smiles (str): The SMILES string representing the molecule.
+def mol_to_svg_image(mol, width=600, height=300):
+        
+    """
+    Generate an SVG image of a molecule using RDKit's 2D drawing tools.
+    Higher resolution and larger size for better visualization compared 
+    to RDKit's MolToImage function.
+
+    Parameters:
+        mol (rdkit.Chem.Mol): The RDKit molecule object to be drawn.
+        width (int, optional): Width of the SVG image in pixels. Defaults to 600.
+        height (int, optional): Height of the SVG image in pixels. Defaults to 300.
 
     Returns:
-        PIL.Image.Image: An image of the rendered molecule, or None if the SMILES string is invalid.
+        str: An SVG string representation of the molecule, with cleaned XML tags
+             for compatibility with Streamlit rendering.
     """
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        return None
 
-    # Generate 2D coordinates
-    AllChem.Compute2DCoords(mol)
-
-    # Create the drawer and options
-    drawer = rdMolDraw2D.MolDraw2DCairo(300, 300)
-    opts = drawer.drawOptions()
-
-    # Set global atom label color to black
-    opts.atomLabelColour = (0, 0, 0)  # Black text
-
-    # Customize sulfur color to yellow
-    opts.elemDict = {'S': (1.0, 1.0, 0.0)}  # Yellow sulfur
-
-    # Modify the atom labels
-    for atom in mol.GetAtoms():
-        if atom.GetSymbol() == "S" and atom.GetDegree() == 1:
-            # Set the label for sulfur to include "S-CoA"
-            atom.SetProp("atomLabel", "S-CoA")
-
-    # Draw the molecule
+    drawer = Draw.MolDraw2DSVG(width, height)
+    drawer.drawOptions().bondLineWidth = 2.0
+    drawer.drawOptions().atomLabelFontSize = 18
     drawer.DrawMolecule(mol)
     drawer.FinishDrawing()
-
-    # Convert the drawing to an image
-    return Image.open(io.BytesIO(drawer.GetDrawingText()))
+    svg = drawer.GetDrawingText()
+    return svg
 
 def _display_cycle_steps(cycle):
-    """Helper function to display steps of a single cycle."""
+
+    """
+    Display detailed information and molecular images for each step within a given β-oxidation cycle.
+
+    This helper function uses Streamlit to present:
+    - Reactant and product molecular structures with CoA group visualization.
+    - Step-specific descriptive information including the reaction type, catalysts, and expected ATP yield.
+    - SMARTS pattern used to identify the reaction.
+    - The chemical transformation from reactant to product in SMILES notation.
+
+    Parameters:
+        cycle (dict): A dictionary representing a single cycle, expected to have a 'steps' key 
+                      containing a list of step dictionaries. Each step dictionary should include:
+                        - 'step' (str): Name/type of the biochemical step (e.g., "Dehydrogenation").
+                        - 'input' (str): SMILES string of the reactant molecule.
+                        - 'output' (str): SMILES string of the product molecule.
+                        - 'smarts' (str): SMARTS pattern string describing the chemical transformation.
+
+    Note:
+        This function depends on the mol_to_svg_image() function for molecular rendering.
+    """
+
     for step in cycle['steps']:
-        col1, col2 = st.columns([1, 3])
+        col1, col2 = st.columns([1, 2])
 
         with col1:
 
             st.markdown("**Reactant**")
-            st.image(draw_mol_with_coa(step['input']), use_container_width=True)
+
+            # Adding CoA group to the reactant SMILES
+
+            reactant_smiles = step['input']
+            reactant_smiles = reactant_smiles + "*"
+            reactant_mol = Chem.MolFromSmiles(reactant_smiles)
+            for atom in reactant_mol.GetAtoms():
+                if atom.GetSymbol() == "*":
+                    atom.SetProp("atomLabel", "CoA")
+                    reactant_svg = mol_to_svg_image(reactant_mol)
+            st.image(reactant_svg, use_container_width=True)
 
             st.markdown("**Product**")
-            st.image(draw_mol_with_coa(step['output']), use_container_width=True)
+            
+            # Adding CoA group to the product SMILES
+
+            product_smiles = step['output']
+            product_smiles = product_smiles + "*"
+            product_mol = Chem.MolFromSmiles(product_smiles)
+            for atom in product_mol.GetAtoms():
+                if atom.GetSymbol() == "*":
+                    atom.SetProp("atomLabel", "CoA")
+                    product_svg = mol_to_svg_image(product_mol)
+            st.image(product_svg, use_container_width=True)
 
         with col2:
             # Display step information
@@ -77,6 +102,13 @@ def _display_cycle_steps(cycle):
                 st.markdown("- FAD → FADH₂ (1.5 ATP)")
                 st.markdown("- Catalyzed by Acyl-CoA dehydrogenase")
                 expected_atp = 1.5
+            elif step['step'] == "Isomerase‑assisted dehydrogenation":
+                st.markdown("- Occurs when a double bond is at Δ³ (between β and γ carbons)")
+                st.markdown("- Enoyl-CoA isomerase shifts the double bond to Δ² (between α and β carbons)")
+                st.markdown("- This rearrangement allows the β-oxidation cycle to proceed")
+                st.markdown("- No ATP is produced in this step")
+                st.markdown("- Catalyzed by Enoyl-CoA isomerase")
+                expected_atp = 0
             elif step['step'] == "Hydration":
                 st.markdown("- H₂O added across double bond")
                 st.markdown("- Catalyzed by Enoyl-CoA hydratase")
@@ -102,47 +134,41 @@ def _display_cycle_steps(cycle):
         
         st.divider()
 
+
+# ------------------ Streamlit Page ------------------
+
 # Get data from previous pages
 fa_data = st.session_state.get('fa_data', {})
-processor = fa_data.get('processor', None)
-
-if not processor:
-    st.warning("No fatty acid data found. Please go back to the home page and start again.")
-    if st.button("Back to Home"):
-        st.switch_page("app.py")
+smiles = fa_data.get('smiles', None)
+if not smiles:
+    st.error("No FA data found, please go back to Home.")
     st.stop()
-
-# Display the current fatty acid being analyzed
-current_fa = fa_data.get('name', 'Unknown Fatty Acid')
-st.subheader(f"Analyzing: {current_fa}")
-
-# Clear previous oxidation results if the fatty acid has changed
-if 'previous_fa' not in st.session_state:
-    st.session_state.previous_fa = current_fa
-elif st.session_state.previous_fa != current_fa:
-    st.session_state.pop('oxidation_results', None)
-    st.session_state.previous_fa = current_fa
-
-# Run complete oxidation if not already done or if fatty acid changed
-if 'oxidation_results' not in st.session_state:
+    
+# Check if fatty acid has changed or processor doesn't exist
+if ('processor' not in st.session_state) or ('previous_fa' not in st.session_state) or (st.session_state.previous_fa != fa_data):
+    st.session_state.previous_fa = fa_data
+    st.session_state.processor = EnhancedFattyAcidMetabolism(smiles)
+    
     with st.spinner("Running beta oxidation..."):
         try:
-            # Reset processor state
-            processor.cycle_log = []
-            processor.reaction_steps = []
-            processor.reaction_results = []
-            processor.reaction_descriptions = []
-            
-            st.session_state.oxidation_results = processor.run_complete_oxidation()
+            # Clear any previous internal state (optional if constructor does this)
+            st.session_state.processor.cycle_log = []
+            st.session_state.processor.reaction_steps = []
+            st.session_state.processor.reaction_results = []
+            st.session_state.processor.reaction_descriptions = []
+
+            st.session_state.oxidation_results = st.session_state.processor.run_complete_oxidation()
             
             # Ensure cycle_log exists
-            if not hasattr(processor, 'cycle_log'):
-                processor.cycle_log = []
-                
+            if not hasattr(st.session_state.processor, 'cycle_log'):
+                st.session_state.processor.cycle_log = []
+
         except Exception as e:
             st.error(f"Error running oxidation: {str(e)}")
             st.stop()
 
+# Now safely assign local processor variable from session state
+processor = st.session_state.processor
 results = st.session_state.oxidation_results
 
 # Display ATP calculations
@@ -303,8 +329,8 @@ with col2:
 # Navigation buttons
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("Back to 3D Spiral"):
-        st.switch_page("pages/3D_Lynen_Spiral.py")
+    if st.button("Back to Lynen Spiral"):
+        st.switch_page("pages/Lynen_Spiral.py")
 with col2:
-    if st.button("Back to Home"):
+    if st.button("Back to Home Page"):
         st.switch_page("Home.py")

@@ -1,19 +1,20 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
+import io
 from rdkit import Chem
 from rdkit.Chem import Draw
 from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
 # --- Page Setup ---
 st.set_page_config(layout="wide")
-st.title("3D representation of the Lynen Spiral")
+st.title("🌀 Lynen Spiral with Reaction Coloring")
 
 # --- Check Session State ---
 if 'fa_data' not in st.session_state:
     st.error("❌ No molecule data found. Please start from the Home page.")
     if st.button("← Return to Home"):
-        st.switch_page("app.py")
+        st.switch_page("Home.py")
     st.stop()
 
 # --- Load Data ---
@@ -29,10 +30,30 @@ if mol is None:
     st.error("Invalid SMILES string stored. Please restart.")
     st.stop()
 
+processor = EnhancedFattyAcidMetabolism(smiles)
+
 # --- Run β-Oxidation ---
 @st.cache_data
 def run_beta_oxidation(smiles):
-    metabolism = EnhancedFattyAcidMetabolism(Chem.MolToSmiles(mol))
+
+    """
+    Simulate the complete β-oxidation process for a given fatty acid molecule.
+
+    Parameters:
+        smiles (str): The SMILES string representation of the fatty acid molecule.
+
+    Returns:
+        dict: A structured data dictionary prepared for visualization, containing
+              detailed information about each reaction step, cycles, and overall metabolism.
+
+    Notes:
+        - This function uses the EnhancedFattyAcidMetabolism class to run the
+          complete oxidation simulation.
+        - The output is cached by Streamlit to avoid redundant calculations on repeated calls
+          with the same SMILES input.
+    """
+
+    metabolism = EnhancedFattyAcidMetabolism(smiles)
     metabolism.run_complete_oxidation()
     return metabolism.prepare_data_for_visualization()
 
@@ -45,6 +66,7 @@ with st.spinner("Simulating β-oxidation cycles..."):
 reaction_colors = {
     "Activation": "#FF6B6B",      # Red
     "Dehydrogenation": "#A74ECD", # Teal
+    "Isomerase‑assisted dehydrogenation": "#FFA1E3", # Light pink
     "Hydration": "#45B7D1",       # Blue
     "Oxidation": "#FFA07A",       # Light orange
     "Thiolysis": "#98D8C8"        # Mint green
@@ -52,6 +74,35 @@ reaction_colors = {
 
 # --- 3D Spiral Visualization ---
 def create_lynens_spiral(cycles):
+    
+    """
+    Generate a 3D Lynen Spiral visualization of β-oxidation cycles using Plotly.
+
+    This function maps each reaction step within each β-oxidation cycle onto a 3D
+    spiral structure, where:
+        - The spiral winds with a slight radius decrease per cycle.
+        - Each step is positioned based on its cycle index and step index.
+        - Steps are colored according to predefined reaction types.
+        - Cycle labels are added at appropriate positions.
+        - A legend clarifies the colors associated with different reaction types.
+        - The layout is customized for clean visualization with hidden axes and a camera
+          viewpoint optimized for viewing the spiral.
+
+    Parameters:
+        cycles (list): A list of cycle dictionaries, each containing reaction steps with
+                       their names and other relevant data. (retrieved from the
+                       EnhancedFattyAcidMetabolism class, prepare_data_for_visualization method)
+
+    Returns:
+        plotly.graph_objects.Figure: A 3D scatter plot figure representing the Lynen Spiral,
+                                    with reaction steps colored by reaction type, cycle labels,
+                                    and a legend for reaction types.
+
+    Notes:
+        - Requires global 'reaction_colors' dictionary for mapping reaction types to colors.
+        - Uses global 'total_cycles' and 'fa_data' variables for labeling and title text.
+    """
+
     fig = go.Figure()
     
     # Spiral parameters
@@ -74,7 +125,7 @@ def create_lynens_spiral(cycles):
             z.append(cycle_idx * height_per_cycle)
             
             # Get reaction type (first word of step name)
-            reaction_type = step["step"].split()[0]
+            reaction_type = step["step"]
             colors.append(reaction_colors.get(reaction_type, "#AAAAAA"))
             labels.append(f"Cycle {cycle_idx+1}: {step['step']}")
 
@@ -165,7 +216,7 @@ def create_lynens_spiral(cycles):
     return fig
 
 # --- Main Display ---
-col1, col2 = st.columns([3, 1])
+col1, col2 = st.columns([2, 1])
 
 with col1:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Add some space
@@ -181,22 +232,49 @@ with col2:
     cycle_data = cycles[selected_cycle-1]
     st.markdown(f"**Steps in Cycle {selected_cycle}:**")
     for step in cycle_data["steps"]:
-        reaction_type = step["step"].split()[0]
+        reaction_type = step["step"]
         color = reaction_colors.get(reaction_type, "#AAAAAA")
         st.markdown(
             f"- <span style='color: {color}; font-weight: bold;'>{step['step']}</span>",
             unsafe_allow_html=True
         )
-    
+
+    def mol_to_svg_image(mol, width=600, height=300):
+        
+        """
+        Generate an SVG image of a molecule using RDKit's 2D drawing tools.
+        Higher resolution and larger size for better visualization compared 
+        to RDKit's MolToImage function.
+
+        Parameters:
+            mol (rdkit.Chem.Mol): The RDKit molecule object to be drawn.
+            width (int, optional): Width of the SVG image in pixels. Defaults to 600.
+            height (int, optional): Height of the SVG image in pixels. Defaults to 300.
+
+        Returns:
+            str: An SVG string representation of the molecule, with cleaned XML tags
+                 for compatibility with Streamlit rendering.
+        """
+
+        drawer = Draw.MolDraw2DSVG(width, height)
+        drawer.drawOptions().bondLineWidth = 2.0
+        drawer.drawOptions().atomLabelFontSize = 18
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+        svg = drawer.GetDrawingText()
+        return svg
+
     st.markdown("---")
     st.subheader("Molecular View")
+    
     step_to_show = st.select_slider(
         "Select step",
         options=list(range(len(cycle_data["steps"]))),
         format_func=lambda x: f"Step {x+1}: {cycle_data['steps'][x]['step']}"
-    )
-    
+        )
+
     step_smiles = cycle_data["steps"][step_to_show]["output"]
+    
     # Adding the CoA group to the SMILES string for visualization 
     # (Workaround to visialize CoA group in the molecule without getting an error from RDKit))
     step_smiles = step_smiles + "*"
@@ -204,8 +282,9 @@ with col2:
     for atom in step_mol.GetAtoms():
         if atom.GetSymbol() == "*":
             atom.SetProp("atomLabel", "CoA")
-    mol_img = Draw.MolToImage(step_mol, size=(300, 300))
-    st.image(mol_img, caption=f"Step {step_to_show+1} Structure")
+    svg = mol_to_svg_image(step_mol)
+    st.image(svg, caption=f"Step {step_to_show+1} Structure", use_container_width=True)
+
 
 # --- Navigation ---
 st.markdown("---")
