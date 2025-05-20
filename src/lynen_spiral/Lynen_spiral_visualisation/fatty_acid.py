@@ -13,15 +13,14 @@ class FattyAcidType(Enum):
     
 class FattyAcidMetabolism:
     def __init__(self, smiles: str):
-
         """
         Initialize fatty acid metabolism analyzer.
         
-        Parameters:
-            smiles : str
-                     SMILES representation of the fatty acid
+        Parameters
+        ----------
+        smiles : str
+            SMILES representation of the fatty acid
         """
-
         self.molecule = Chem.MolFromSmiles(smiles)
         if not self.molecule:
             raise ValueError("Invalid SMILES string")
@@ -32,61 +31,25 @@ class FattyAcidMetabolism:
         self.double_bond_positions = self._get_double_bond_positions()
         self.type = self._determine_fatty_acid_type()
     
+    # (Ipek) Added a new method to handle the input of fatty acids in different formats.
     def _get_carbon_chain_length(self, mol) -> int:
-
-        """
-        Calculate the total number of carbon atoms in the given molecule.
-
-        Parameters:
-            mol (rdkit.Chem.Mol): The RDKit molecule object.
-
-        Returns:
-            int: Total number of carbon atoms in the molecule.
-        """
-        
+        """Calculate the length of the carbon chain in the given molecule."""
         return len([atom for atom in mol.GetAtoms() if atom.GetSymbol() == 'C'])
 
     
     def _count_double_bonds(self) -> int:
-
-        """
-        Count the number of carbon–carbon double bonds (C=C) in the molecule 
-        using a SMARTS pattern.
-
-        Returns:
-            int: The number of C=C double bonds found in the molecule.
-        """
-
+        """Count the number of C=C double bonds."""
         pattern = Chem.MolFromSmarts('C=C')
         return len(self.molecule.GetSubstructMatches(pattern))
     
     def _get_double_bond_positions(self) -> List[int]:
-
-        """
-        Identify the positions of double bonds in the fatty acid 
-        molecule using a SMART pattern.
-
-        Returns:
-            List[int]: A list of atom indices corresponding to the first atom 
-            in each C=C double bond.
-        """
-
+        """Get the positions of double bonds."""
         pattern = Chem.MolFromSmarts('C=C')
         matches = self.molecule.GetSubstructMatches(pattern)
         return [match[0] for match in matches]
     
     def _determine_fatty_acid_type(self) -> FattyAcidType:
-
-        """
-        Classify the fatty acid based on the number of double bonds.
-
-        Returns:
-            FattyAcidType: One of the following enum values indicating the saturation level:
-                - SATURATED: No double bonds
-                - MONOUNSATURATED: Exactly one double bond
-                - POLYUNSATURATED: More than one double bond
-        """
-
+        """Determine the type of fatty acid."""
         if self.double_bonds == 0:
             return FattyAcidType.SATURATED
         elif self.double_bonds == 1:
@@ -95,54 +58,26 @@ class FattyAcidMetabolism:
             return FattyAcidType.POLYUNSATURATED
     
     def calculate_activation_energy(self) -> Dict[str, float]:
-
         """
-        Calculate the ATP cost associated with fatty acid activation.
-
-        Fatty acids are activated to acyl-CoA by the enzyme acyl-CoA synthetase,
-        which hydrolyzes ATP to AMP and pyrophosphate (PPi). This reaction is 
-        energetically equivalent to consuming 2 ATP molecules.
-
-        Returns:
-            Dict[str, float]: A dictionary containing:
-                - 'ATP_cost': (float) The energetic cost in ATP equivalents (2 ATP)
-                - 'description': (str) A short explanation of the activation step
+        Calculate ATP cost for fatty acid activation.
+        
+        The activation of fatty acids requires 2 ATP:
+        1. ATP → AMP + PPi (equivalent to 2 ATP)
         """
-         
         return {
             'ATP_cost': 2,
             'description': 'Conversion to acyl-CoA via acyl-CoA synthetase'
         }
     
     def calculate_atp_yield(self) -> dict:
-
         """
-        Calculate the total ATP yield from complete β-oxidation of a fatty acid.
+        Calculate ATP yield from complete oxidation.
 
-        This method computes the ATP contribution from:
-        - FADH2 and NADH generated during β-oxidation cycles,
-        - Acetyl-CoA entering the citric acid cycle,
-        - Adjustments for unsaturated fatty acids (e.g., isomerase/reductase effects),
-        - Odd-chain fatty acids generating propionyl-CoA,
-        - Subtracting activation energy costs.
-
-        Returns:
-            dict: A breakdown of ATP yield components including:
-                - Total FADH2 and NADH ATP equivalents
-                - Total Acetyl-CoA yield and contribution
-                - Extra NADH from unsaturation handling
-                - ATP penalty from NADPH-consuming reductase (if applicable)
-                - ATP yield from propionyl-CoA (odd-chain FAs)
-                - Activation energy cost
-                - Final total ATP yield
-
-        Notes:
-            - Assumes 1 FADH2 = 1.5 ATP, 1 NADH = 2.5 ATP, 1 Acetyl-CoA = 10 ATP.
-            - Simplifies propionyl-CoA contribution as a fixed ATP gain for odd-chain FAs.
-            - May include a reductase penalty for even-position double bonds in unsaturated FAs.
-            - Uses "calculate_activation_energy" method.
+        Returns
+        -------
+        dict
+            Breakdown of ATP production steps
         """
-
         # First calculate activation cost
         activation_cost = self.calculate_activation_energy()['ATP_cost']
 
@@ -210,29 +145,7 @@ class FattyAcidMetabolism:
         }
     
     def visualize_steps(self):
-
-        """
-        Generate a step-by-step visual representation of the β-oxidation process.
-
-        Simulate and visualize the key stages of fatty acid metabolism:
-        1. The initial unmodified fatty acid.
-        2. Activation to the acyl-CoA form.
-        3. Repeated β-oxidation cycles, including any necessary isomerizations 
-           (e.g., for cis double bonds) and two-carbon removals.
-
-        Each step is recorded and rendered as a molecular image using RDKit and 
-        displayed with its corresponding description in a vertically stacked matplotlib plot.
-
-        Returns:
-            matplotlib.figure.Figure: A matplotlib figure containing molecular images 
-            and stepwise annotations of the β-oxidation pathway.
-    
-        Notes:
-            - This visualization is simplified and symbolic. Chemical accuracy is 
-              approximated to provide pedagogical clarity.
-            - Isomerization steps are simulated only at cycles with known double bond positions.
-        """
-
+        """Visualize the β-oxidation steps including activation."""
         steps = []
         descriptions = []
         
@@ -281,21 +194,7 @@ class FattyAcidMetabolism:
         return fig
     
     def _simulate_activation(self, smiles: str) -> str:
-
-        """
-        Simulate conversion to acyl-CoA.
-        
-        Args:
-            smiles (str): The SMILES representation of the unactivated fatty acid.
-
-        Returns:
-            str: A modified SMILES string representing the acyl-CoA form.
-
-        Note:
-            This function does not generate a chemically valid acyl-CoA structure.
-            It serves as a symbolic placeholder for illustrative purposes.
-        """
-        
+        """Simulate conversion to acyl-CoA."""
         # This is a simplified representation - in reality would be more complex
         return smiles.replace("O", "SCoA")
     
@@ -328,19 +227,7 @@ class FattyAcidMetabolism:
 
     
     def _remove_two_carbons(self, smiles: str) -> str:
-        """
-        Simulate the shortening of a fatty acid chain by removing two carbon atoms.
-
-        This method interprets a SMILES string, counts the carbon atoms, and constructs 
-        a new simplified thioester SMILES string with two fewer carbons (excluding the 
-        carbonyl and CoA moiety which are retained as C(=O)SCoA).
-
-        Parameters:
-            smiles (str): The SMILES representation of the input fatty acid molecule.
-
-        Returns:
-            str: A simplified SMILES string representing the shortened molecule.
-        """
+        """Simulate removal of two carbons."""
         mol = Chem.MolFromSmiles(smiles)
         atoms = mol.GetAtoms()
         n_carbons = len([atom for atom in atoms if atom.GetSymbol() == 'C'])
