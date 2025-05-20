@@ -304,7 +304,7 @@ with col2:
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Back to 3D Spiral"):
-        st.switch_page("pages/2_🌀_3D_Spiral.py")
+        st.switch_page("pages/3D_Lynen_Spiral.py")
 with col2:
     if st.button("Back to Home"):
-        st.switch_page("app.py")
+        st.switch_page("Home.py")

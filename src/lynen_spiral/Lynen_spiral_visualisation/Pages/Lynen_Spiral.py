@@ -7,7 +7,7 @@ from enhanced_fatty_acid import EnhancedFattyAcidMetabolism
 
 # --- Page Setup ---
 st.set_page_config(layout="wide")
-st.title("🌀 Lynen Spiral with Reaction Coloring")
+st.title("3D representation of the Lynen Spiral")
 
 # --- Check Session State ---
 if 'fa_data' not in st.session_state:
@@ -212,7 +212,7 @@ st.markdown("---")
 col1, col2 = st.columns(2)
 with col1:
     if st.button("← Back to Home", use_container_width=True):
-        st.switch_page("app.py")
+        st.switch_page("Home.py")
 with col2:
     if st.button("View 2D Cycle Details →", use_container_width=True):
-        st.switch_page("pages/3_📊_2D_Cycle.py")
+        st.switch_page("pages/Mecanisms.py")
