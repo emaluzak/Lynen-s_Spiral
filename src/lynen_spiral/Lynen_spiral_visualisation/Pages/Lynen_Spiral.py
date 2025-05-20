@@ -294,4 +294,4 @@ with col1:
         st.switch_page("Home.py")
 with col2:
     if st.button("View 2D Cycle Details →", use_container_width=True):
-        st.switch_page("pages/Mecanisms.py")
+        st.switch_page("pages/Mechanisms.py")
