@@ -79,7 +79,7 @@ def show_home_page():
     st.markdown("---")
     st.subheader(" ATP – The Energy Currency")
     st.markdown("""
-    **ATP (Adenosine Triphosphate)** is the final product of cellular respiration — it's the molecule your cells use to perform work.
+    **ATP (Adenosine Triphosphate)** is the final product of cellular respiration — it's the molecule the cells use to perform work.
 
     - Muscle contraction
     - Brain signaling
