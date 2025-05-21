@@ -95,31 +95,27 @@ def _display_cycle_steps(cycle):
             st.image(product_svg, use_container_width=True)
 
         with col2:
-            # Display step information
             st.markdown(f"**{step['step']}**")
             
             if step['step'] == "Dehydrogenation":
-                st.markdown("- FAD → FADH₂ (1.5 ATP)")
-                st.markdown("- Catalyzed by Acyl-CoA dehydrogenase")
+                st.markdown("- **Action:** Introduces a trans double bond between α and β carbons (Δ²-enoyl-CoA) via FAD-dependent oxidation")
+                st.latex(r"Acyl-CoA + FAD \rightarrow Unsaturatedacyl-CoA + FADH_2")
                 expected_atp = 1.5
             elif step['step'] == "Isomerase‑assisted dehydrogenation":
                 st.markdown("- Occurs when a double bond is at Δ³ (between β and γ carbons)")
-                st.markdown("- Enoyl-CoA isomerase shifts the double bond to Δ² (between α and β carbons)")
-                st.markdown("- This rearrangement allows the β-oxidation cycle to proceed")
-                st.markdown("- No ATP is produced in this step")
-                st.markdown("- Catalyzed by Enoyl-CoA isomerase")
+                st.markdown("- **Action:** Shifts the double bond to Δ² (between α and β carbons)")
                 expected_atp = 0
             elif step['step'] == "Hydration":
-                st.markdown("- H₂O added across double bond")
-                st.markdown("- Catalyzed by Enoyl-CoA hydratase")
+                st.markdown("- **Action:** Adds H₂O across the double bond to form β-hydroxyacyl-CoA")
+                st.latex(r"Unsaturatedacyl-CoA + H_2O \rightarrow \beta-hydroxyacyl-CoA")
                 expected_atp = 0
             elif step['step'] == "Oxidation":
-                st.markdown("- NAD⁺ → NADH (2.5 ATP)")
-                st.markdown("- Catalyzed by 3-Hydroxyacyl-CoA dehydrogenase")
+                st.markdown("- **Action:** Oxidizes β-hydroxy group to a keto group forming β-oxoacyl-CoA via NAD⁺-dependent oxidation")
+                st.latex(r"\beta-hydroxyacyl-CoA + NAD^+ \rightarrow \beta-oxoacyl-CoA + NADH + H^+")
                 expected_atp = 2.5
             elif step['step'] == "Thiolysis":
-                st.markdown("- Cleavage by thiolase")
-                st.markdown("- Produces Acetyl-CoA (10 ATP via TCA cycle)")
+                st.markdown("- **Action:** Cleaves β-oxoacyl-CoA using CoA-SH to release acetyl-CoA and a shortened acyl-CoA")
+                st.latex(r"\beta-oxoacyl-CoA + HS-CoA \rightarrow Acetyl-CoA + Acyl-CoA(-2C)")
                 expected_atp = 10
             
             st.markdown(f"**SMARTS Pattern:** `{step['smarts']}`")
@@ -232,7 +228,7 @@ try:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total ATP Yield", f"{total_atp:.1f}")
     col2.metric("Activation Cost", f"{activation_cost:.1f}", delta="-2 ATP")
-    col3.metric("FADH2 Yield", f"{fadh2_atp:.1f}", 
+    col3.metric("FADH₂ Yield", f"{fadh2_atp:.1f}", 
                delta=f"{expected_cycles - double_bonds} × 1.5 ATP")
     col4.metric("NADH Yield", f"{nadh_atp:.1f}", 
                delta=f"{expected_cycles} × 2.5 ATP")
