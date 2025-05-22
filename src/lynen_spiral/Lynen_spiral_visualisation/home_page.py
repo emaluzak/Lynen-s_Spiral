@@ -10,11 +10,12 @@ def show_home_page():
     script_dir = Path(__file__).parent
     
     # Define image paths (relative to script location)
+    image_dir = script_dir / "data"
     image_paths = {
-        'coa': script_dir / "coa.jpg",
-        'fad': script_dir / "FAD.jpg",
-        'nadh': script_dir / "NADH.jpg",
-        'atp': script_dir / "atp.jpg"
+        'coa': image_dir / "coa.jpg",
+        'fad': image_dir / "FAD.jpg",
+        'nadh': image_dir / "NADH.jpg",
+        'atp': image_dir / "atp.jpg"
     }
     
     # Verify images exist
