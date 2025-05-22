@@ -47,7 +47,7 @@ def _display_cycle_steps(cycle):
 
     This helper function uses Streamlit to present:
     - Reactant and product molecular structures with CoA group visualization.
-    - Step-specific descriptive information including the reaction type, catalysts, and expected ATP yield.
+    - Step-specific descriptive information including the reaction type, and expected ATP yield.
     - SMARTS pattern used to identify the reaction.
     - The chemical transformation from reactant to product in SMILES notation.
 
