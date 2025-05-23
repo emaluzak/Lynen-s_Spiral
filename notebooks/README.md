@@ -86,7 +86,6 @@ The following Python libraries are required:
 - plotly  
 - rdkit  
 - numpy  
-- pandas  
 - matplotlib 
 
 ---
@@ -96,7 +95,7 @@ The following Python libraries are required:
 To launch the application, run the following command:
 
 ```bash
-streamlit run Home.py
+streamlit run src\lynen_spiral\Lynen_spiral_visualisation\Home.py
 ```
 
 The application will open in your default web browser at:  

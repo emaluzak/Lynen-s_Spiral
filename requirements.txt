@@ -1,0 +1,5 @@
+streamlit
+plotly
+rdkit-pypi
+numpy
+matplotlib
